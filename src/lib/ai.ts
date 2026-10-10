@@ -1,4 +1,5 @@
 import type { AiProvider, FoodLog, UserSettings, WorkoutPlanImport } from './types';
+import type { TrainingAnalytics } from './localData';
 
 export type { AiProvider } from './types';
 export type MealAnalysis = { name: string; meal: FoodLog['meal']; kcal: number; protein: number; carbs: number; fat: number; notes: string; confidence?: number };
@@ -77,8 +78,11 @@ export async function analyzeTrainingPlanImage(provider: AiProvider, apiKey: str
   return { title: raw.title.trim(), weekday, weekMode, exercises };
 }
 
-export async function analyzeTraining(provider: AiProvider, apiKey: string, data: { days: number; sessions: number; completedSets: number; totalVolume: number; avgSleepHours?: number; mealDays: number }): Promise<TrainingAnalysis> {
-  const text = await callProvider(provider, apiKey, [{ role: 'system', content: '你是 FitTrack 的训练分析助手。只根据提供的真实统计给出具体建议，不要编造不存在的训练、睡眠或饮食记录。严格返回 JSON：summary 字符串、strengths 字符串数组、suggestions 字符串数组、dataNote 字符串。' }, { role: 'user', content: JSON.stringify(data) }]);
+export async function analyzeTraining(provider: AiProvider, apiKey: string, data: TrainingAnalytics): Promise<TrainingAnalysis> {
+  const text = await callProvider(provider, apiKey, [
+    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于这些已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须明确写“暂无数据”或“无法判断”，每条建议都要指出依据来自哪个数据维度。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown，结构为：summary 字符串、strengths 字符串数组、suggestions 字符串数组、dataNote 字符串。dataNote 必须说明分析区间、实际覆盖的数据项和缺失项。' },
+    { role: 'user', content: JSON.stringify(data) },
+  ], 0.2);
   const result = parseJson<TrainingAnalysis>(text);
   const strengths = Array.isArray(result.strengths) ? result.strengths.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
   const suggestions = Array.isArray(result.suggestions) ? result.suggestions.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];

@@ -106,20 +106,97 @@ export function toggleHabitLog(habitId: string, loggedOn = dateKey()) { const lo
 export function habitStreak(habitId: string) { const logs = new Set(getHabitLogs().filter(item => item.habitId === habitId && item.completed).map(item => item.loggedOn)); let current = new Date(); let count = 0; while (logs.has(dateKey(current))) { count += 1; current = subDays(current, 1); } return count; }
 export function habitHeatmap(days = 98) { const byDay = new Map<string, number>(); getHabitLogs().filter(item => item.completed).forEach(item => byDay.set(item.loggedOn, (byDay.get(item.loggedOn) ?? 0) + 1)); return Array.from({ length: days }, (_, index) => { const day = subDays(new Date(), days - index - 1); const key = dateKey(day); return { date: key, level: Math.min(4, byDay.get(key) ?? 0) }; }); }
 
-export function getTrainingAnalytics(days = 28) {
-  const start = dateKey(subDays(new Date(), Math.max(0, days - 1)));
-  const sessions = getSessions().filter(session => session.startedAt.slice(0, 10) >= start);
+export type TrainingAnalytics = {
+  period: { days: number; start: string; end: string };
+  training: {
+    plannedSessions: number;
+    completedSessions: number;
+    completionRate?: number;
+    sessions: number;
+    completedSets: number;
+    totalVolume: number;
+    exerciseStats: Array<{ name: string; sets: number; volume: number; maxWeightKg: number; reps: number }>;
+  };
+  sleep: { loggedDays: number; avgHours?: number; goalRate?: number; goalHours?: number };
+  nutrition: { loggedDays: number; avgKcal?: number; avgProtein?: number; avgCarbs?: number; avgFat?: number; calorieGoal?: number };
+  body: { loggedDays: number; latestWeightKg?: number; weightChangeKg?: number; latestBodyFatPercent?: number; bodyFatChangePercent?: number; targetWeightKg?: number };
+  habits: { habitCount: number; completedLogs: number; completionRate?: number; currentStreaks: Array<{ name: string; days: number }> };
+  goals: { calorieGoal?: number; sleepGoalHours?: number; targetWeightKg?: number };
+  missingData: string[];
+};
+
+export function getTrainingAnalytics(days = 28): TrainingAnalytics {
+  const endDate = new Date();
+  const startDate = subDays(endDate, Math.max(0, days - 1));
+  const start = dateKey(startDate);
+  const end = dateKey(endDate);
+  const settings = getSettings();
+  const plans = getPlans().filter(plan => plan.active && plan.items.length > 0);
+  const sessions = getSessions().filter(session => session.startedAt.slice(0, 10) >= start && session.startedAt.slice(0, 10) <= end);
+  const completedSessions = sessions.filter(session => Boolean(session.endedAt));
   const completedSets = sessions.reduce((total, session) => total + session.sets.filter(set => set.completed).length, 0);
   const totalVolume = sessions.reduce((total, session) => total + session.sets.filter(set => set.completed).reduce((volume, set) => volume + set.weightKg * set.reps, 0), 0);
-  const sleepLogs = getSleepLogs().filter(log => log.loggedOn >= start);
-  const mealDays = new Set(getAllMeals().filter(log => log.loggedOn >= start).map(log => log.loggedOn)).size;
+  const completedDays = new Set(completedSessions.map(session => `${session.planId}:${session.startedAt.slice(0, 10)}`));
+  let plannedSessions = 0;
+  for (let offset = 0; offset < days; offset += 1) {
+    const date = subDays(endDate, days - offset - 1);
+    plans.forEach(plan => { if (isPlanScheduledOn(plan, date)) plannedSessions += 1; });
+  }
+  const completionRate = plannedSessions ? Math.round(completedDays.size / plannedSessions * 100) : undefined;
+  const exerciseNames = new Map<string, string>();
+  getPlans().forEach(plan => plan.exercises.forEach(exercise => exerciseNames.set(`${plan.id}:${exercise.id}`, exercise.name)));
+  const exerciseMap = new Map<string, { name: string; sets: number; volume: number; maxWeightKg: number; reps: number }>();
+  sessions.flatMap(session => session.sets.filter(set => set.completed).map(set => ({ session, set }))).forEach(({ session, set }) => {
+    const name = exerciseNames.get(`${session.planId}:${set.exerciseId}`) ?? '未命名动作';
+    const current = exerciseMap.get(name) ?? { name, sets: 0, volume: 0, maxWeightKg: 0, reps: 0 };
+    current.sets += 1;
+    current.volume += set.weightKg * set.reps;
+    current.maxWeightKg = Math.max(current.maxWeightKg, set.weightKg);
+    current.reps += set.reps;
+    exerciseMap.set(name, current);
+  });
+
+  const sleepLogs = getSleepLogs().filter(log => log.loggedOn >= start && log.loggedOn <= end);
+  const avgSleepHours = sleepLogs.length ? sleepLogs.reduce((total, log) => total + log.durationMinutes, 0) / sleepLogs.length / 60 : undefined;
+  const sleepGoalHours = settings.sleepGoalMinutes ? settings.sleepGoalMinutes / 60 : undefined;
+  const sleepGoalRate = sleepGoalHours && sleepLogs.length ? Math.round(sleepLogs.filter(log => log.durationMinutes >= settings.sleepGoalMinutes!).length / sleepLogs.length * 100) : undefined;
+
+  const meals = getAllMeals().filter(log => log.loggedOn >= start && log.loggedOn <= end);
+  const mealDays = new Set(meals.map(log => log.loggedOn)).size;
+  const mealAverage = (key: 'kcal' | 'protein' | 'carbs' | 'fat') => mealDays ? meals.reduce((sum, meal) => sum + meal[key], 0) / mealDays : undefined;
+
+  const bodyMetrics = getBodyMetrics().filter(metric => metric.measuredOn >= start && metric.measuredOn <= end);
+  const weights = bodyMetrics.filter(metric => metric.weightKg !== undefined).map(metric => metric.weightKg!);
+  const bodyFats = bodyMetrics.filter(metric => metric.bodyFatPercent !== undefined).map(metric => metric.bodyFatPercent!);
+  const latestWeightKg = weights.at(-1);
+  const latestBodyFatPercent = bodyFats.at(-1);
+  const weightChangeKg = weights.length > 1 ? Number((weights.at(-1)! - weights[0]).toFixed(1)) : undefined;
+  const bodyFatChangePercent = bodyFats.length > 1 ? Number((bodyFats.at(-1)! - bodyFats[0]).toFixed(1)) : undefined;
+
+  const habits = getHabits();
+  const completedHabitLogs = getHabitLogs().filter(log => log.loggedOn >= start && log.loggedOn <= end && log.completed).length;
+  const activeHabitCount = habits.filter(habit => habit.createdAt.slice(0, 10) <= end).length;
+  const habitCompletionRate = activeHabitCount ? Math.round(completedHabitLogs / (activeHabitCount * days) * 100) : undefined;
+  const currentStreaks = habits.map(habit => ({ name: habit.name, days: habitStreak(habit.id) }));
+  const missingData: string[] = [];
+  if (!sessions.length) missingData.push('训练');
+  if (!sleepLogs.length) missingData.push('睡眠');
+  if (!meals.length) missingData.push('饮食');
+  if (!bodyMetrics.length) missingData.push('体重体测');
+  if (!habits.length || !completedHabitLogs) missingData.push('习惯');
+  if (!settings.calorieGoal) missingData.push('每日热量目标');
+  if (!settings.sleepGoalMinutes) missingData.push('每日睡眠目标');
+  if (!settings.targetWeightKg) missingData.push('目标体重');
+
   return {
-    days,
-    sessions: sessions.length,
-    completedSets,
-    totalVolume: Math.round(totalVolume),
-    avgSleepHours: sleepLogs.length ? sleepLogs.reduce((total, log) => total + log.durationMinutes, 0) / sleepLogs.length / 60 : undefined,
-    mealDays,
+    period: { days, start, end },
+    training: { plannedSessions, completedSessions: completedSessions.length, completionRate, sessions: sessions.length, completedSets, totalVolume: Math.round(totalVolume), exerciseStats: [...exerciseMap.values()].sort((a, b) => b.volume - a.volume) },
+    sleep: { loggedDays: sleepLogs.length, avgHours: avgSleepHours, goalRate: sleepGoalRate, goalHours: sleepGoalHours },
+    nutrition: { loggedDays: mealDays, avgKcal: mealAverage('kcal'), avgProtein: mealAverage('protein'), avgCarbs: mealAverage('carbs'), avgFat: mealAverage('fat'), calorieGoal: settings.calorieGoal },
+    body: { loggedDays: bodyMetrics.length, latestWeightKg, weightChangeKg, latestBodyFatPercent, bodyFatChangePercent, targetWeightKg: settings.targetWeightKg },
+    habits: { habitCount: activeHabitCount, completedLogs: completedHabitLogs, completionRate: habitCompletionRate, currentStreaks },
+    goals: { calorieGoal: settings.calorieGoal, sleepGoalHours, targetWeightKg: settings.targetWeightKg },
+    missingData,
   };
 }
 
@@ -141,6 +218,71 @@ export function getTrainingRate(days = 28) {
     });
   }
   return expected ? Math.round((completed / expected) * 100) : undefined;
+}
+
+export function seedPreviewData() {
+  if (!import.meta.env.DEV) return false;
+  const previewKey = `${PREFIX}preview-seeded`;
+  if (localStorage.getItem(previewKey)) return false;
+  const hasUserData = [keys.settings, keys.plans, keys.sessions, keys.meals, keys.sleep, keys.body, keys.habits, keys.habitLogs].some(key => localStorage.getItem(`${PREFIX}${key}`));
+  if (hasUserData) return false;
+
+  const now = new Date();
+  const today = dateKey(now);
+  const planId = makeId();
+  const benchId = makeId();
+  const pressId = makeId();
+  const sessionId = makeId();
+  const plan: WorkoutPlan = {
+    id: planId,
+    title: '力量基础',
+    weekday: now.getDay(),
+    weekMode: 'every',
+    active: true,
+    exercises: [
+      { id: benchId, name: '杠铃卧推', muscleGroup: '胸部', instructions: '肩胛收紧，脚掌踩稳。', todos: [{ id: makeId(), label: '完成热身组', completed: true }, { id: makeId(), label: '记录最后一组重量', completed: false }] },
+      { id: pressId, name: '哑铃肩推', muscleGroup: '肩部', instructions: '核心收紧，动作保持可控。', todos: [{ id: makeId(), label: '全程控制下放', completed: false }] },
+    ],
+    items: [
+      { id: makeId(), exerciseId: benchId, sortOrder: 0, targetSets: 4, targetReps: 8, targetWeightKg: 50 },
+      { id: makeId(), exerciseId: pressId, sortOrder: 1, targetSets: 3, targetReps: 10, targetWeightKg: 16 },
+    ],
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+  const session: WorkoutSession = { id: sessionId, planId, startedAt: new Date(now.getTime() - 1000 * 60 * 75).toISOString(), endedAt: new Date(now.getTime() - 1000 * 60 * 12).toISOString(), sets: [
+    { id: makeId(), exerciseId: benchId, setNumber: 1, weightKg: 45, reps: 8, completed: true },
+    { id: makeId(), exerciseId: benchId, setNumber: 2, weightKg: 50, reps: 8, completed: true },
+    { id: makeId(), exerciseId: benchId, setNumber: 3, weightKg: 50, reps: 7, completed: true },
+    { id: makeId(), exerciseId: pressId, setNumber: 1, weightKg: 14, reps: 10, completed: true },
+    { id: makeId(), exerciseId: pressId, setNumber: 2, weightKg: 16, reps: 9, completed: true },
+  ] };
+  const meals: FoodLog[] = [
+    { id: makeId(), loggedOn: today, meal: 'breakfast', name: '燕麦与鸡蛋', kcal: 420, protein: 25, carbs: 48, fat: 14, source: 'manual' },
+    { id: makeId(), loggedOn: today, meal: 'lunch', name: '鸡胸肉糙米饭', kcal: 610, protein: 46, carbs: 64, fat: 16, source: 'manual' },
+    { id: makeId(), loggedOn: today, meal: 'snack', name: '无糖酸奶', kcal: 130, protein: 12, carbs: 10, fat: 4, source: 'manual' },
+  ];
+  const sleep: SleepLog = { id: makeId(), loggedOn: today, fellAsleepAt: `${today}T23:15`, wokeAt: `${today}T07:00`, durationMinutes: 465, quality: 4 };
+  const body: BodyMetric[] = Array.from({ length: 5 }, (_, index) => { const measuredOn = dateKey(subDays(now, 4 - index)); return { id: makeId(), measuredOn, weightKg: Number((71.8 - index * 0.15).toFixed(1)), bodyFatPercent: Number((18.6 - index * 0.12).toFixed(1)) }; });
+  const habitA: Habit = { id: makeId(), name: '喝水 2L', icon: 'Droplets', createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30).toISOString() };
+  const habitB: Habit = { id: makeId(), name: '拉伸 10 分钟', icon: 'StretchHorizontal', createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 16).toISOString() };
+  const habitLogs: HabitLog[] = [];
+  for (let offset = 0; offset < 14; offset += 1) {
+    const loggedOn = dateKey(subDays(now, offset));
+    habitLogs.push({ id: makeId(), habitId: habitA.id, loggedOn, completed: offset % 4 !== 3 });
+    if (offset < 8) habitLogs.push({ id: makeId(), habitId: habitB.id, loggedOn, completed: offset % 3 !== 2 });
+  }
+  write(keys.settings, { calorieGoal: 2200, sleepGoalMinutes: 480, targetWeightKg: 70, aiProvider: 'qwen' });
+  write(keys.plans, [plan]);
+  write(keys.sessions, [session]);
+  write(keys.meals, meals);
+  write(keys.sleep, [sleep]);
+  write(keys.body, body);
+  write(keys.habits, [habitA, habitB]);
+  write(keys.habitLogs, habitLogs);
+  localStorage.setItem(previewKey, new Date().toISOString());
+  window.dispatchEvent(new CustomEvent('fittrack:data'));
+  return true;
 }
 
 export function getDashboardSnapshot() {

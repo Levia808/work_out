@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronRight, Dumbbell, FileImage, Plus, Repeat2, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { AppShell } from '../components/AppShell';
 import { Heatmap } from '../components/Heatmap';
+import { PhotoSourcePicker } from '../components/PhotoSourcePicker';
 import { RingProgress } from '../components/CircularMetric';
 import { analyzeTrainingPlanImage, getAnalysisProvider } from '../lib/ai';
 import { createPlan, createPlanFromImport, formatWeekday, getPlans, getSettings, habitHeatmap, planProgress, weekModeLabel } from '../lib/localData';
@@ -18,15 +19,6 @@ const planSchema = z.object({
   targetReps: z.coerce.number().int().min(1).max(100),
 });
 
-function readImage(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('图片读取失败，请重试。'));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function WorkoutsPage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState(getPlans);
@@ -35,8 +27,10 @@ export function WorkoutsPage() {
   const [form, setForm] = useState({ title: '', weekday: String(new Date().getDay()), weekMode: 'every' as WeekMode, exerciseName: '', targetSets: '3', targetReps: '10' });
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [importStatus, setImportStatus] = useState('');
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoStatus, setPhotoStatus] = useState<'idle' | 'reading' | 'compressing' | 'submitting' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     const sync = () => setPlans(getPlans());
@@ -59,21 +53,25 @@ export function WorkoutsPage() {
     setShowForm(false);
   };
 
-  const importFromImage = async (file: File) => {
+  const importFromImage = async (imageDataUrl: string) => {
     const provider = getAnalysisProvider(getSettings());
     if (!provider) {
+      setPhotoStatus('error');
       setImportStatus('请先到设置中选择千问或 DeepSeek 并填写对应 API Key。不会在没有数据时生成虚假计划。');
       return;
     }
     setImporting(true);
+    setPhotoStatus('submitting');
     setImportStatus(`正在使用${provider.provider === 'qwen' ? '千问' : 'DeepSeek'}识别图片…`);
     try {
-      const imported = await analyzeTrainingPlanImage(provider.provider, provider.apiKey, await readImage(file));
+      const imported = await analyzeTrainingPlanImage(provider.provider, provider.apiKey, imageDataUrl);
       const plan = createPlanFromImport(imported);
       setPlans(getPlans());
+      setPhotoStatus('success');
       setImportStatus(`已导入「${plan.title}」，共 ${plan.items.length} 个动作。`);
       navigate(`/workouts/${plan.id}`);
     } catch (reason) {
+      setPhotoStatus('error');
       setImportStatus(reason instanceof Error ? reason.message : '训练计划导入失败，请换一张更清晰的图片。');
     } finally {
       setImporting(false);
@@ -89,9 +87,9 @@ export function WorkoutsPage() {
         </div>
         <div className="workout-week-actions">
           <button className="secondary-btn row" type="button" onClick={() => { setShowForm(value => !value); setError(''); }}><span>{showForm ? '关闭新建' : '新建计划'}</span>{showForm ? <X size={17} /> : <Plus size={17} />}</button>
-          <button className="secondary-btn row" type="button" onClick={() => imageInputRef.current?.click()} disabled={importing}><span>{importing ? '识别中…' : 'AI 导入计划'}</span><FileImage size={17} /></button>
-          <input ref={imageInputRef} className="visually-hidden" type="file" accept="image/*" capture="environment" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFromImage(file); }} />
+          <button className="secondary-btn row" type="button" onClick={() => { setShowImport(true); requestAnimationFrame(() => document.getElementById('workout-ai-import')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }} disabled={importing}><span>{showImport ? '更换计划图片' : 'AI 导入计划'}</span><FileImage size={17} /></button>
         </div>
+        {showImport ? <div id="workout-ai-import" className="workout-import-picker"><PhotoSourcePicker preview={photoPreview} status={photoStatus} statusText={importing ? '正在识别训练计划…' : '拍照或从相册选择训练计划图片'} onReady={selection => { setPhotoPreview(selection.dataUrl); setPhotoStatus('submitting'); void importFromImage(selection.dataUrl); }} onClear={() => { setPhotoPreview(''); setPhotoStatus('idle'); setImportStatus(''); }} disabled={importing} /></div> : null}
         {importStatus ? <p className="health-status" role="status" aria-live="polite">{importStatus}</p> : null}
       </section>
 
