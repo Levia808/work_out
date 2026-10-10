@@ -32,6 +32,10 @@ function providerLabel(provider: AiJob['provider']) {
   return provider === 'qwen' ? '千问' : 'DeepSeek';
 }
 
+function jobProviderLabel(job: AiJob) {
+  return job.source === 'preview' ? '本地演示' : providerLabel(job.provider);
+}
+
 function statusLabel(status: AiJob['status']) {
   return ({ submitting: '已提交', generating: '生成中', succeeded: '已生成', failed: '失败', interrupted: '已中断', uploading: '上传中', reading: '读取中' } as Record<AiJob['status'], string>)[status];
 }
@@ -126,7 +130,7 @@ export function StatsPage() {
       </div>
 
       <section className="card">
-        <div className="row"><div><h2 className="card-title">体重趋势</h2><p className="card-copy">至少两条真实记录后显示折线</p></div><Activity size={20} className="muted" /></div>
+        <div className="row"><h2 className="card-title">体重趋势</h2><Activity size={20} className="muted" /></div>
         {chart ? <><div className="chart-wrap" role="img" aria-label="体重趋势图"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}><polyline points={chart.points} fill="none" stroke="#fff" strokeWidth="1.7" vectorEffect="non-scaling-stroke" />{chart.targetY !== undefined ? <line x1="0" x2="100" y1={chart.targetY} y2={chart.targetY} stroke="rgba(255,255,255,.3)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}{chart.pointsData.map((item, index) => <circle key={item.id} cx={(index / (chart.pointsData.length - 1)) * 100} cy={chart.pointY[index]} r="1.6" fill="#fff" vectorEffect="non-scaling-stroke" />)}</svg></div><div className="row muted" style={{ fontSize: '.75rem' }}>{chart.pointsData.slice(-4).map(item => <span key={item.id}>{item.measuredOn.slice(5)}</span>)}</div>{settings.targetWeightKg !== undefined ? <p className="card-copy">虚线为目标体重 {settings.targetWeightKg} kg</p> : null}</> : <div className="empty-chart">暂无足够的体重记录。保存两条不同日期的体重后，这里会显示趋势。</div>}
       </section>
 
@@ -143,12 +147,12 @@ export function StatsPage() {
         {modeJob ? <div className={`ai-job-status is-${modeJob.status}`}><span>{statusLabel(modeJob.status)}</span><span className="muted">{new Date(modeJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div> : null}
         {analysisError || modeJob?.status === 'failed' ? <p className="form-error" role="alert">{analysisError || modeJob?.error}</p> : null}
         {modeJob?.status === 'interrupted' ? <p className="health-hint">本次请求未能在浏览器关闭前完成，状态已保存；重新生成会创建一条新的报告记录。</p> : null}
-        {focusedReport ? <AiReportCard report={focusedReport} provider={providerLabel(focusedJob!.provider)} /> : null}
+        {focusedReport ? <AiReportCard report={focusedReport} provider={jobProviderLabel(focusedJob!)} /> : null}
       </section>
 
       <section className="card stack ai-history-shell">
         <div className="row"><h2 className="card-title">报告记录</h2><span className="history-count">{analysisJobs.length}</span></div>
-        {analysisJobs.length ? <div className="ai-history-list">{analysisJobs.map(job => <button className={`ai-history-item${focusedJob?.id === job.id ? ' is-selected' : ''}`} type="button" key={job.id} onClick={() => setSelectedHistoryId(job.id)}><span className={`ai-history-dot is-${job.status}`} /><span className="ai-history-copy"><strong>{modeFromInput(job.inputSummary)}</strong><span>{new Date(job.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {providerLabel(job.provider)}</span></span><span className="ai-history-status">{statusLabel(job.status)}</span><ChevronRight size={16} className="muted" /></button>)}</div> : <div className="report-empty-history"><Sparkles size={18} /><span>暂无 AI 报告</span></div>}
+        {analysisJobs.length ? <div className="ai-history-list">{analysisJobs.map(job => <button className={`ai-history-item${focusedJob?.id === job.id ? ' is-selected' : ''}`} type="button" key={job.id} onClick={() => setSelectedHistoryId(job.id)}><span className={`ai-history-dot is-${job.status}`} /><span className="ai-history-copy"><strong>{modeFromInput(job.inputSummary)}</strong><span>{new Date(job.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {jobProviderLabel(job)}</span></span><span className="ai-history-status">{statusLabel(job.status)}</span><ChevronRight size={16} className="muted" /></button>)}</div> : <div className="report-empty-history"><Sparkles size={18} /><span>暂无 AI 报告</span></div>}
       </section>
     </div>
   </AppShell>;

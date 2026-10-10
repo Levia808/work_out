@@ -863,3 +863,29 @@ canvas {
   .ai-history-dot.is-generating,
   .ai-history-dot.is-submitting { animation: none; }
 }
+
+/* Compact workout header: primary actions stay discoverable via aria-label/title without
+   spending a full row on repeated explanatory copy. */
+.workout-week-header { align-items: center; gap: 10px; }
+.workout-week-heading { flex: 1 1 auto; align-items: center; }
+.workout-week-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
+.workout-week-actions .icon-btn { width: 44px; height: 44px; }
+@media (max-width: 360px) {
+  .workout-week-actions { gap: 6px; }
+  .workout-week-actions .icon-btn { width: 42px; height: 42px; }
+}
+
+/* Short-height guardrail (small phones and compact desktop previews): preserve a
+   readable first viewport without letting the fixed dock mask an entire card. */
+@media (max-height: 760px) {
+  .fit-shell { padding-top: 14px; }
+  .fit-header { margin-top: 16px; margin-bottom: 14px; }
+  .fit-title { font-size: clamp(1.9rem, 8vw, 2.5rem); }
+  .fit-subtitle { margin-top: 5px; }
+  .card { padding: 15px; }
+  .stack { gap: 9px; }
+  .chart-wrap { height: 138px; }
+  .metric-card { min-height: 126px; }
+  .bottom-nav { padding-top: 8px; }
+  .nav-item { min-height: 44px; }
+}

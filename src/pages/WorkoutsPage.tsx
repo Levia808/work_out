@@ -89,13 +89,15 @@ export function WorkoutsPage() {
   return <AppShell title="训练">
     <div className="stack">
       <section className="card workout-week-bar">
-        <div className="row-start workout-week-heading">
-          <span className="list-leading"><CalendarDays size={20} /></span>
-          <div className="list-content"><h2 className="card-title">每周计划</h2><p className="card-copy">支持每周、单周、双周重复</p></div>
-        </div>
-        <div className="workout-week-actions">
-          <button className="secondary-btn row" type="button" onClick={() => { setShowForm(value => !value); setError(''); }}><span>{showForm ? '关闭新建' : '新建计划'}</span>{showForm ? <X size={17} /> : <Plus size={17} />}</button>
-          <button className="secondary-btn row" type="button" onClick={() => { setShowImport(true); requestAnimationFrame(() => document.getElementById('workout-ai-import')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }} disabled={importing}><span>{showImport ? '更换计划图片' : 'AI 导入计划'}</span><FileImage size={17} /></button>
+        <div className="row workout-week-header">
+          <div className="row-start workout-week-heading">
+            <span className="list-leading"><CalendarDays size={20} /></span>
+            <div className="list-content"><h2 className="card-title">每周计划</h2></div>
+          </div>
+          <div className="workout-week-actions">
+            <button className="icon-btn" type="button" onClick={() => { setShowForm(value => !value); setError(''); }} aria-label={showForm ? '关闭新建计划' : '新建计划'} title={showForm ? '关闭新建计划' : '新建计划'}>{showForm ? <X size={19} /> : <Plus size={19} />}</button>
+            <button className="icon-btn" type="button" onClick={() => { setShowImport(true); requestAnimationFrame(() => document.getElementById('workout-ai-import')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }} aria-label={showImport ? '更换计划图片' : 'AI 导入计划'} title={showImport ? '更换计划图片' : 'AI 导入计划'} disabled={importing}><FileImage size={18} /></button>
+          </div>
         </div>
         {showImport ? <div id="workout-ai-import" className="workout-import-picker"><PhotoSourcePicker preview={photoPreview} status={photoStatus} statusText={importing ? '正在识别训练计划…' : '拍照或从相册选择训练计划图片'} onReady={selection => { setPhotoPreview(selection.dataUrl); setPhotoStatus('submitting'); void importFromImage(selection.dataUrl); }} onClear={() => { setPhotoPreview(''); setPhotoStatus('idle'); setImportStatus(''); }} disabled={importing} /><div className={`ai-job-status is-${importJob?.status ?? 'idle'}`} aria-live="polite">{importJob ? <><span>{({ submitting: '已提交，等待响应', generating: '识别生成中', succeeded: '已生成并导入', failed: '提交失败，可重试', interrupted: '任务中断，可重新提交', uploading: '上传中', reading: '读取中' } as Record<string, string>)[importJob.status]}</span><span className="muted">{new Date(importJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></> : <span className="muted">请选择训练计划图片开始识别。</span>}</div></div> : null}
         {importStatus ? <p className="health-status" role="status" aria-live="polite">{importStatus}</p> : null}
