@@ -122,7 +122,7 @@ function buildPreviewTrainingAnalysis(): TrainingAnalysis {
 
 /** Seed one clearly marked report so the local demo can be visually verified without an API key. */
 export function seedPreviewAiJob() {
-  if (!import.meta.env.DEV || !localStorage.getItem(PREVIEW_DATA_KEY) || getAiJobs().some(job => job.kind === 'training-analysis')) return false;
+  if (!import.meta.env.DEV || !localStorage.getItem(PREVIEW_DATA_KEY) || getAiJobs().some(job => job.kind === 'training-analysis' && job.source === 'preview' && job.inputSummary === 'analysis:7')) return false;
   const now = new Date().toISOString();
   const job: AiJob<TrainingAnalysis> = {
     id: makeId(),
