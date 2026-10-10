@@ -1,6 +1,5 @@
 import { Plus, Settings } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { BottomNav } from './BottomNav';
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -28,6 +27,5 @@ export function AppShell({ children, title, subtitle, actions = true, actionLink
       </header>
       {children}
     </main>
-    <BottomNav />
   </div>;
 }

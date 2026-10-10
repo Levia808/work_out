@@ -3,10 +3,14 @@ import { Link } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { CircularMetric, RingProgress } from '../components/CircularMetric';
 import { Heatmap } from '../components/Heatmap';
+import { ProgressBar } from '../components/ProgressBar';
+import { loadHealthSnapshot } from '../lib/health';
 import { dashboardData, habits, workoutPlans } from '../lib/demoData';
 
 export function DashboardPage() {
   const completed = habits.filter(habit => habit.completed).length;
+  const healthSnapshot = loadHealthSnapshot();
+  const sleepHours = healthSnapshot?.latestSleepHours ?? dashboardData.sleepHours;
   return <AppShell title="总览" subtitle="周五，10 月 9 日" actionLink={{ to: "/records", label: "添加记录" }}>
     <div className="stack">
       <section className="card card-muted">
@@ -20,19 +24,19 @@ export function DashboardPage() {
         </div>
         <div style={{ marginTop: 18 }}>
           <div className="row"><span className="muted" style={{ fontSize: '.8rem' }}>本周完成 3 / 5 次</span><span className="eyebrow">{dashboardData.trainingProgress}%</span></div>
-          <div className="progress-bar" style={{ marginTop: 8 }}><span style={{ width: `${dashboardData.trainingProgress}%` }} /></div>
+          <ProgressBar value={dashboardData.trainingProgress} label="本周训练完成进度" style={{ marginTop: 8 }} />
         </div>
       </section>
-      <div className="card-grid">
-        <CircularMetric label="摄入热量" value={dashboardData.calories.toLocaleString()} unit="kcal" progress={(dashboardData.calories / dashboardData.calorieGoal) * 100} icon="calories" helper={`目标 ${dashboardData.calorieGoal.toLocaleString()} kcal`} />
-        <CircularMetric label="睡眠" value={dashboardData.sleepHours} unit="小时" progress={(dashboardData.sleepHours / dashboardData.sleepGoal) * 100} icon="sleep" helper="昨晚记录" />
+      <div className="card-grid dashboard-metric-grid">
+        <CircularMetric label="摄入热量" value={dashboardData.calories} unit="kcal" progress={(dashboardData.calories / dashboardData.calorieGoal) * 100} icon="calories" helper={`目标 ${dashboardData.calorieGoal.toLocaleString()} kcal`} />
+        <CircularMetric label="睡眠" value={sleepHours} unit="小时" progress={(sleepHours / dashboardData.sleepGoal) * 100} icon="sleep" helper="昨晚记录" />
       </div>
       <section className="card">
         <div className="row">
           <div><p className="eyebrow">习惯完成度</p><h2 style={{ margin: '5px 0 0', fontSize: '1.5rem' }}>{completed} / {habits.length} 项</h2></div>
           <Link to="/records/habits" className="icon-btn" style={{ width: 40, height: 40 }} aria-label="查看习惯"><ChevronRight size={19} /></Link>
         </div>
-        <div style={{ marginTop: 17 }} className="progress-bar"><span style={{ width: `${dashboardData.habitProgress}%` }} /></div>
+        <ProgressBar value={dashboardData.habitProgress} label="习惯完成进度" style={{ marginTop: 17 }} />
         <p className="card-copy" style={{ marginTop: 10 }}>保持节奏，连续第 8 天</p>
       </section>
       <section>

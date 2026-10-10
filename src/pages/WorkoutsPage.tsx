@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Dumbbell, Plus, Timer, TrendingUp, X } from 'lucide-react';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 import { AppShell } from '../components/AppShell';
 import { RingProgress } from '../components/CircularMetric';
 import { Heatmap } from '../components/Heatmap';
@@ -32,7 +33,7 @@ export function WorkoutsPage() {
       </div>
       <Heatmap />
       <section className="card">
-        <div className="row"><div><p className="eyebrow">总训练量</p><p className="card-copy">过去 7 天</p></div><div className="row"><span className="big-number">3,200</span><span className="unit">kg</span></div></div>
+        <div className="row"><div><p className="eyebrow">总训练量</p><p className="card-copy">过去 7 天</p></div><div className="row"><AnimatedNumber value={3200} className="big-number" /><span className="unit">kg</span></div></div>
         <div className="divider" style={{ margin: '17px 0' }} />
         <div className="row"><span className="muted">较上周</span><span className="row" style={{ justifyContent: 'flex-end', color: '#fff' }}><TrendingUp size={16} />12.4%</span></div>
       </section>
