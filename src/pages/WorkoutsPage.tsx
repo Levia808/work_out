@@ -7,8 +7,9 @@ import { Heatmap } from '../components/Heatmap';
 import { PhotoSourcePicker } from '../components/PhotoSourcePicker';
 import { RingProgress } from '../components/CircularMetric';
 import { analyzeTrainingPlanImage, getAnalysisProvider } from '../lib/ai';
+import { createAiJob, getLatestAiJob, updateAiJob, type AiJob } from '../lib/aiJobs';
 import { createPlan, createPlanFromImport, formatWeekday, getPlans, getSettings, habitHeatmap, planProgress, weekModeLabel } from '../lib/localData';
-import type { WeekMode } from '../lib/types';
+import type { WeekMode, WorkoutPlanImport } from '../lib/types';
 
 const planSchema = z.object({
   title: z.string().trim().min(1, '请填写计划名称'),
@@ -31,6 +32,7 @@ export function WorkoutsPage() {
   const [importStatus, setImportStatus] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
   const [photoStatus, setPhotoStatus] = useState<'idle' | 'reading' | 'compressing' | 'submitting' | 'success' | 'error'>('idle');
+  const [importJob, setImportJob] = useState<AiJob<WorkoutPlanImport> | undefined>(() => getLatestAiJob('workout-plan-image', 'workout-plan-image:latest') as AiJob<WorkoutPlanImport> | undefined);
 
   useEffect(() => {
     const sync = () => setPlans(getPlans());
@@ -60,19 +62,25 @@ export function WorkoutsPage() {
       setImportStatus('请先到设置中选择千问或 DeepSeek 并填写对应 API Key。不会在没有数据时生成虚假计划。');
       return;
     }
+    const job = createAiJob({ kind: 'workout-plan-image', provider: provider.provider, inputSummary: 'workout-plan-image:latest', status: 'submitting' }) as AiJob<WorkoutPlanImport>;
+    setImportJob(job);
     setImporting(true);
     setPhotoStatus('submitting');
     setImportStatus(`正在使用${provider.provider === 'qwen' ? '千问' : 'DeepSeek'}识别图片…`);
     try {
+      setImportJob(updateAiJob(job.id, { status: 'generating' }) as AiJob<WorkoutPlanImport>);
       const imported = await analyzeTrainingPlanImage(provider.provider, provider.apiKey, imageDataUrl);
       const plan = createPlanFromImport(imported);
+      setImportJob(updateAiJob(job.id, { status: 'succeeded', result: imported, retryable: false, error: undefined }) as AiJob<WorkoutPlanImport>);
       setPlans(getPlans());
       setPhotoStatus('success');
       setImportStatus(`已导入「${plan.title}」，共 ${plan.items.length} 个动作。`);
       navigate(`/workouts/${plan.id}`);
     } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '训练计划导入失败，请换一张更清晰的图片。';
+      setImportJob(updateAiJob(job.id, { status: 'failed', error: message, retryable: true }) as AiJob<WorkoutPlanImport>);
       setPhotoStatus('error');
-      setImportStatus(reason instanceof Error ? reason.message : '训练计划导入失败，请换一张更清晰的图片。');
+      setImportStatus(message);
     } finally {
       setImporting(false);
     }
@@ -89,7 +97,7 @@ export function WorkoutsPage() {
           <button className="secondary-btn row" type="button" onClick={() => { setShowForm(value => !value); setError(''); }}><span>{showForm ? '关闭新建' : '新建计划'}</span>{showForm ? <X size={17} /> : <Plus size={17} />}</button>
           <button className="secondary-btn row" type="button" onClick={() => { setShowImport(true); requestAnimationFrame(() => document.getElementById('workout-ai-import')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }} disabled={importing}><span>{showImport ? '更换计划图片' : 'AI 导入计划'}</span><FileImage size={17} /></button>
         </div>
-        {showImport ? <div id="workout-ai-import" className="workout-import-picker"><PhotoSourcePicker preview={photoPreview} status={photoStatus} statusText={importing ? '正在识别训练计划…' : '拍照或从相册选择训练计划图片'} onReady={selection => { setPhotoPreview(selection.dataUrl); setPhotoStatus('submitting'); void importFromImage(selection.dataUrl); }} onClear={() => { setPhotoPreview(''); setPhotoStatus('idle'); setImportStatus(''); }} disabled={importing} /></div> : null}
+        {showImport ? <div id="workout-ai-import" className="workout-import-picker"><PhotoSourcePicker preview={photoPreview} status={photoStatus} statusText={importing ? '正在识别训练计划…' : '拍照或从相册选择训练计划图片'} onReady={selection => { setPhotoPreview(selection.dataUrl); setPhotoStatus('submitting'); void importFromImage(selection.dataUrl); }} onClear={() => { setPhotoPreview(''); setPhotoStatus('idle'); setImportStatus(''); }} disabled={importing} /><div className={`ai-job-status is-${importJob?.status ?? 'idle'}`} aria-live="polite">{importJob ? <><span>{({ submitting: '已提交，等待响应', generating: '识别生成中', succeeded: '已生成并导入', failed: '提交失败，可重试', interrupted: '任务中断，可重新提交', uploading: '上传中', reading: '读取中' } as Record<string, string>)[importJob.status]}</span><span className="muted">{new Date(importJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></> : <span className="muted">请选择训练计划图片开始识别。</span>}</div></div> : null}
         {importStatus ? <p className="health-status" role="status" aria-live="polite">{importStatus}</p> : null}
       </section>
 
