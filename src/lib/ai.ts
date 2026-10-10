@@ -3,7 +3,25 @@ import type { TrainingAnalytics } from './localData';
 
 export type { AiProvider } from './types';
 export type MealAnalysis = { name: string; meal: FoodLog['meal']; kcal: number; protein: number; carbs: number; fat: number; notes: string; confidence?: number };
-export type TrainingAnalysis = { summary: string; strengths: string[]; suggestions: string[]; dataNote: string };
+export type TrainingMetricKey = 'training' | 'sleep' | 'nutrition' | 'habits' | 'body';
+export type TrainingAnalysisMetric = {
+  key: TrainingMetricKey;
+  label: string;
+  value: number | null;
+  unit: string;
+  note: string;
+  progress: number | null;
+};
+export type TrainingSuggestion = { title: string; body: string; basis: string; priority: 'high' | 'medium' | 'low' };
+export type TrainingAnalysis = {
+  summary: string;
+  strengths: string[];
+  suggestions: TrainingSuggestion[];
+  dataNote: string;
+  score: { value: number | null; label: string; basis: string };
+  metrics: TrainingAnalysisMetric[];
+  trend: { title: string; unit: string; labels: string[]; values: Array<number | null> };
+};
 
 function endpoint(provider: AiProvider) { return provider === 'qwen' ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' : 'https://api.deepseek.com/chat/completions'; }
 function model(provider: AiProvider, multimodal = false) {
@@ -78,16 +96,81 @@ export async function analyzeTrainingPlanImage(provider: AiProvider, apiKey: str
   return { title: raw.title.trim(), weekday, weekMode, exercises };
 }
 
+function nullableNumber(value: unknown, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
+function normalizeTrainingAnalysisValue(input: unknown): TrainingAnalysis {
+  const raw = (input ?? {}) as Record<string, unknown>;
+  const strengths = Array.isArray(raw.strengths) ? raw.strengths.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
+  const rawSuggestions = Array.isArray(raw.suggestions) ? raw.suggestions : [];
+  const suggestions: TrainingSuggestion[] = rawSuggestions.map(item => {
+    if (typeof item === 'string') return { title: '建议', body: item.trim(), basis: '', priority: 'medium' as const };
+    const value = (item ?? {}) as Record<string, unknown>;
+    const priority: TrainingSuggestion['priority'] = value.priority === 'high' || value.priority === 'low' ? value.priority : 'medium';
+    return {
+      title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : '建议',
+      body: typeof value.body === 'string' ? value.body.trim() : '',
+      basis: typeof value.basis === 'string' ? value.basis.trim() : '',
+      priority,
+    };
+  }).filter(item => item.body);
+
+  const rawMetrics = Array.isArray(raw.metrics) ? raw.metrics : [];
+  const validKeys: TrainingMetricKey[] = ['training', 'sleep', 'nutrition', 'habits', 'body'];
+  const metrics: TrainingAnalysisMetric[] = rawMetrics.map(item => {
+    const value = (item ?? {}) as Record<string, unknown>;
+    const key = validKeys.includes(value.key as TrainingMetricKey) ? value.key as TrainingMetricKey : 'training';
+    return {
+      key,
+      label: typeof value.label === 'string' && value.label.trim() ? value.label.trim() : key,
+      value: nullableNumber(value.value),
+      unit: typeof value.unit === 'string' ? value.unit.trim() : '',
+      note: typeof value.note === 'string' ? value.note.trim() : '',
+      progress: nullableNumber(value.progress, 0, 100),
+    };
+  }).filter((item, index, list) => list.findIndex(candidate => candidate.key === item.key) === index);
+
+  const rawTrend = (raw.trend ?? {}) as Record<string, unknown>;
+  const labels = Array.isArray(rawTrend.labels) ? rawTrend.labels.filter((item): item is string => typeof item === 'string').map(item => item.trim()) : [];
+  const values = Array.isArray(rawTrend.values) ? rawTrend.values.map(item => nullableNumber(item, 0, 100)) : [];
+  const trendValues = labels.map((_, index) => values[index] ?? null);
+  const scoreRaw = (raw.score ?? {}) as Record<string, unknown>;
+  const scoreValue = nullableNumber(scoreRaw.value, 0, 100);
+
+  return {
+    summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
+    strengths,
+    suggestions,
+    dataNote: typeof raw.dataNote === 'string' ? raw.dataNote.trim() : '',
+    score: {
+      value: scoreValue,
+      label: typeof scoreRaw.label === 'string' && scoreRaw.label.trim() ? scoreRaw.label.trim() : '执行度',
+      basis: typeof scoreRaw.basis === 'string' ? scoreRaw.basis.trim() : '',
+    },
+    metrics,
+    trend: {
+      title: typeof rawTrend.title === 'string' && rawTrend.title.trim() ? rawTrend.title.trim() : '趋势',
+      unit: typeof rawTrend.unit === 'string' ? rawTrend.unit.trim() : '%',
+      labels,
+      values: trendValues,
+    },
+  };
+}
+
+export function normalizeTrainingAnalysis(input: unknown): TrainingAnalysis {
+  return normalizeTrainingAnalysisValue(input);
+}
+
 export async function analyzeTraining(provider: AiProvider, apiKey: string, data: TrainingAnalytics): Promise<TrainingAnalysis> {
   const text = await callProvider(provider, apiKey, [
-    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于这些已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须明确写“暂无数据”或“无法判断”，每条建议都要指出依据来自哪个数据维度。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown，结构为：summary 字符串、strengths 字符串数组、suggestions 字符串数组、dataNote 字符串。dataNote 必须说明分析区间、实际覆盖的数据项和缺失项。' },
+    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于这些已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须明确写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须使用以下结构：{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]}. score.value 与 metrics.progress 只有在数据足够时填写 0-100，否则为 null。trend.values 表示实际数据支持的 0-100 变化，不存在的数据用 null，labels 与 values 长度一致。每条 suggestions 必须引用真实数据维度作为 basis。dataNote 必须说明分析区间、覆盖的数据项和缺失项。' },
     { role: 'user', content: JSON.stringify(data) },
   ], 0.2);
-  const result = parseJson<TrainingAnalysis>(text);
-  const strengths = Array.isArray(result.strengths) ? result.strengths.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
-  const suggestions = Array.isArray(result.suggestions) ? result.suggestions.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
-  if (typeof result.summary !== 'string' || !result.summary.trim() || !Array.isArray(result.strengths) || !Array.isArray(result.suggestions) || typeof result.dataNote !== 'string' || !result.dataNote.trim()) throw new Error('AI 返回的分析格式不完整。');
-  return { summary: result.summary.trim(), strengths, suggestions, dataNote: result.dataNote.trim() };
+  const result = normalizeTrainingAnalysisValue(parseJson<unknown>(text));
+  if (!result.summary || !result.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
+  return result;
 }
 
 export function getAnalysisProvider(settings: UserSettings): { provider: AiProvider; apiKey: string } | null {

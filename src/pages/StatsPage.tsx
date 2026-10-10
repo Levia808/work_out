@@ -1,10 +1,12 @@
-import { Activity, ArrowDownRight, CalendarDays, Sparkles, Target } from 'lucide-react';
+import { Activity, ArrowDownRight, CalendarDays, ChevronRight, Sparkles, Target } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AiReportCard } from '../components/AiReportCard';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { AppShell } from '../components/AppShell';
+import { ReasoningText } from '../components/ReasoningText';
 import { TrendBadge } from '../components/CircularMetric';
-import { analyzeTraining, getAnalysisProvider, type TrainingAnalysis } from '../lib/ai';
-import { createAiJob, getLatestAiJob, markAiJobInterrupted, updateAiJob, type AiJob } from '../lib/aiJobs';
+import { analyzeTraining, getAnalysisProvider, normalizeTrainingAnalysis, type TrainingAnalysis } from '../lib/ai';
+import { createAiJob, getAiJobs, markAiJobInterrupted, updateAiJob, type AiJob } from '../lib/aiJobs';
 import { getBodyMetrics, getSettings, getTrainingAnalytics, getTrainingRate } from '../lib/localData';
 
 type AnalysisMode = { key: 'day' | 'week' | 'ongoing'; label: string; days: number };
@@ -21,19 +23,31 @@ function formatChange(current: number | undefined, previous: number | undefined,
   return `较上次记录 ${delta > 0 ? '+' : ''}${delta}${unit}`;
 }
 
+function modeFromInput(inputSummary: string) {
+  const days = Number(inputSummary.split(':')[1]);
+  return analysisModes.find(mode => mode.days === days)?.label ?? '训练分析';
+}
+
+function providerLabel(provider: AiJob['provider']) {
+  return provider === 'qwen' ? '千问' : 'DeepSeek';
+}
+
+function statusLabel(status: AiJob['status']) {
+  return ({ submitting: '已提交', generating: '生成中', succeeded: '已生成', failed: '失败', interrupted: '已中断', uploading: '上传中', reading: '读取中' } as Record<AiJob['status'], string>)[status];
+}
+
 export function StatsPage() {
   const [version, setVersion] = useState(0);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode['key']>('week');
   const [analysisError, setAnalysisError] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const analysisInput = `analysis:${analysisModes.find(item => item.key === analysisMode)?.days ?? 7}`;
-  const analysisJob = useMemo(() => getLatestAiJob('training-analysis', analysisInput) as AiJob<TrainingAnalysis> | undefined, [analysisInput, version]);
 
   useEffect(() => {
     const sync = () => setVersion(value => value + 1);
     const markActiveJobs = () => {
-      const activeJob = getLatestAiJob('training-analysis', analysisInput);
-      if (activeJob && ['submitting', 'generating'].includes(activeJob.status)) markAiJobInterrupted(activeJob.id);
+      getAiJobs().filter(job => job.kind === 'training-analysis' && ['submitting', 'generating'].includes(job.status)).forEach(job => markAiJobInterrupted(job.id));
     };
     window.addEventListener('fittrack:data', sync);
     window.addEventListener('fittrack:ai-jobs', sync);
@@ -45,7 +59,15 @@ export function StatsPage() {
       window.removeEventListener('focus', sync);
       window.removeEventListener('pagehide', markActiveJobs);
     };
-  }, [analysisInput]);
+  }, []);
+
+  const analysisJobs = useMemo(() => getAiJobs().filter(job => job.kind === 'training-analysis').map(job => ({
+    ...job,
+    result: job.result ? normalizeTrainingAnalysis(job.result) : undefined,
+  })) as AiJob<TrainingAnalysis>[], [version]);
+  const modeJob = analysisJobs.find(job => job.inputSummary === analysisInput);
+  const focusedJob = selectedHistoryId ? analysisJobs.find(job => job.id === selectedHistoryId) ?? modeJob : modeJob;
+  const focusedReport = focusedJob?.status === 'succeeded' && focusedJob.result ? focusedJob.result : undefined;
 
   const metrics = useMemo(() => getBodyMetrics().filter(item => item.weightKg !== undefined || item.bodyFatPercent !== undefined), [version]);
   const weightMetrics = metrics.filter(item => item.weightKg !== undefined);
@@ -74,6 +96,7 @@ export function StatsPage() {
 
   const runAnalysis = async () => {
     setAnalysisError('');
+    setSelectedHistoryId(null);
     const provider = getAnalysisProvider(settings);
     if (!provider) {
       setAnalysisError('请先在设置中填写千问或 DeepSeek API Key。');
@@ -98,14 +121,8 @@ export function StatsPage() {
   return <AppShell title="统计">
     <div className="stack">
       <div className="card-grid">
-        <div className="card metric-card">
-          <span className="eyebrow">当前体重</span>
-          <div>{latestWeight !== undefined ? <><AnimatedNumber value={latestWeight} decimals={1} className="big-number" /><span className="unit">kg</span>{formatChange(latestWeight, previousWeight, 'kg') ? <TrendBadge text={formatChange(latestWeight, previousWeight, 'kg')!} /> : <p className="card-copy">尚无上一条记录可比较</p>}</> : <><div className="big-number empty-number">--</div><p className="card-copy">暂无体重记录</p></>}</div>
-        </div>
-        <div className="card metric-card">
-          <span className="eyebrow">体脂率</span>
-          <div>{latestFat !== undefined ? <><AnimatedNumber value={latestFat} decimals={1} className="big-number" /><span className="unit">%</span>{formatChange(latestFat, previousFat, '%') ? <span className="row trend-badge" style={{ justifyContent: 'flex-start' }}><ArrowDownRight size={14} />{formatChange(latestFat, previousFat, '%')}</span> : <p className="card-copy">尚无上一条记录可比较</p>}</> : <><div className="big-number empty-number">--</div><p className="card-copy">暂无体脂记录</p></>}</div>
-        </div>
+        <div className="card metric-card"><span className="eyebrow">当前体重</span><div>{latestWeight !== undefined ? <><AnimatedNumber value={latestWeight} decimals={1} className="big-number" /><span className="unit">kg</span>{formatChange(latestWeight, previousWeight, 'kg') ? <TrendBadge text={formatChange(latestWeight, previousWeight, 'kg')!} /> : <p className="card-copy">尚无上一条记录可比较</p>}</> : <><div className="big-number empty-number">--</div><p className="card-copy">暂无体重记录</p></>}</div></div>
+        <div className="card metric-card"><span className="eyebrow">体脂率</span><div>{latestFat !== undefined ? <><AnimatedNumber value={latestFat} decimals={1} className="big-number" /><span className="unit">%</span>{formatChange(latestFat, previousFat, '%') ? <span className="row trend-badge" style={{ justifyContent: 'flex-start' }}><ArrowDownRight size={14} />{formatChange(latestFat, previousFat, '%')}</span> : <p className="card-copy">尚无上一条记录可比较</p>}</> : <><div className="big-number empty-number">--</div><p className="card-copy">暂无体脂记录</p></>}</div></div>
       </div>
 
       <section className="card">
@@ -118,14 +135,20 @@ export function StatsPage() {
         <div className="card"><Target size={20} className="muted" /><p className="card-copy">目标体重</p><div style={{ marginTop: 13 }}>{settings.targetWeightKg !== undefined ? <><AnimatedNumber value={settings.targetWeightKg} decimals={1} className="big-number" /><span className="unit">kg</span></> : <div className="big-number empty-number">--</div>}</div><p className="card-copy">{settings.targetWeightKg === undefined ? '尚未设置' : '来自每日目标设置'}</p></div>
       </div>
 
-      <section className="card stack">
-        <div className="row"><div><h2 className="card-title">AI 训练分析</h2><p className="card-copy">只基于已保存的训练、睡眠与饮食数据。</p></div><Sparkles size={20} className="muted" /></div>
-        <div className="segmented-control analysis-tabs" role="tablist" aria-label="分析范围">{analysisModes.map(mode => <button key={mode.key} type="button" className={analysisMode === mode.key ? 'selected' : ''} onClick={() => { setAnalysisMode(mode.key); setAnalysisError(''); }}>{mode.label}</button>)}</div>
-        <button className="primary-btn row" type="button" onClick={() => void runAnalysis()} disabled={analyzing}><span>{analyzing ? '正在分析…' : analysisJob?.status === 'succeeded' ? `重新生成${selectedMode.label}` : `生成${selectedMode.label}`}</span><Sparkles size={18} /></button>
-        {analysisJob ? <div className={`ai-job-status is-${analysisJob.status}`}><span>{({ submitting: '已提交，等待响应', generating: '生成中，可离开页面后回来查看', succeeded: '已生成并保存到本机', failed: '提交失败，可重试', interrupted: '任务中断，可重新提交', uploading: '上传中', reading: '读取中' } as Record<string, string>)[analysisJob.status]}</span><span className="muted">{new Date(analysisJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div> : null}
-        {analysisError || analysisJob?.status === 'failed' ? <p className="form-error" role="alert">{analysisError || analysisJob?.error}</p> : null}
-        {analysisJob?.status === 'interrupted' ? <p className="health-hint">浏览器关闭后无法接续供应商的原始请求，本次任务已安全保存为中断状态；点击上方按钮会重新提交相同时间范围的真实数据。</p> : null}
-        {analysisJob?.status === 'succeeded' && analysisJob.result ? <div className="ai-analysis stack"><p className="card-copy">{analysisJob.result.dataNote}</p><p className="analysis-summary">{analysisJob.result.summary}</p><div className="analysis-columns"><div><p className="eyebrow">做得好</p><ul>{analysisJob.result.strengths.length ? analysisJob.result.strengths.map(item => <li key={item}>{item}</li>) : <li>暂无可总结的优势</li>}</ul></div><div><p className="eyebrow">下一步建议</p><ul>{analysisJob.result.suggestions.length ? analysisJob.result.suggestions.map(item => <li key={item}>{item}</li>) : <li>暂无建议</li>}</ul></div></div></div> : null}
+      <section className="card stack ai-analysis-shell">
+        <div className="row ai-analysis-heading"><h2 className="card-title">AI 训练分析</h2><Sparkles size={20} className="muted" /></div>
+        <div className="segmented-control analysis-tabs" role="tablist" aria-label="分析范围">{analysisModes.map(mode => <button key={mode.key} type="button" className={analysisMode === mode.key ? 'selected' : ''} onClick={() => { setAnalysisMode(mode.key); setSelectedHistoryId(null); setAnalysisError(''); }}>{mode.label}</button>)}</div>
+        <button className="primary-btn row" type="button" onClick={() => void runAnalysis()} disabled={analyzing}><span>{analyzing ? '正在分析…' : modeJob?.status === 'succeeded' ? `重新生成${selectedMode.label}` : `生成${selectedMode.label}`}</span><Sparkles size={18} /></button>
+        {modeJob && ['submitting', 'generating'].includes(modeJob.status) ? <div className="ai-generating-card"><ReasoningText /><div className="ai-generating-line"><span /><span /><span /></div><p>可离开，结果会保留。</p></div> : null}
+        {modeJob ? <div className={`ai-job-status is-${modeJob.status}`}><span>{statusLabel(modeJob.status)}</span><span className="muted">{new Date(modeJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div> : null}
+        {analysisError || modeJob?.status === 'failed' ? <p className="form-error" role="alert">{analysisError || modeJob?.error}</p> : null}
+        {modeJob?.status === 'interrupted' ? <p className="health-hint">本次请求未能在浏览器关闭前完成，状态已保存；重新生成会创建一条新的报告记录。</p> : null}
+        {focusedReport ? <AiReportCard report={focusedReport} provider={providerLabel(focusedJob!.provider)} /> : null}
+      </section>
+
+      <section className="card stack ai-history-shell">
+        <div className="row"><h2 className="card-title">报告记录</h2><span className="history-count">{analysisJobs.length}</span></div>
+        {analysisJobs.length ? <div className="ai-history-list">{analysisJobs.map(job => <button className={`ai-history-item${focusedJob?.id === job.id ? ' is-selected' : ''}`} type="button" key={job.id} onClick={() => setSelectedHistoryId(job.id)}><span className={`ai-history-dot is-${job.status}`} /><span className="ai-history-copy"><strong>{modeFromInput(job.inputSummary)}</strong><span>{new Date(job.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {providerLabel(job.provider)}</span></span><span className="ai-history-status">{statusLabel(job.status)}</span><ChevronRight size={16} className="muted" /></button>)}</div> : <div className="report-empty-history"><Sparkles size={18} /><span>暂无 AI 报告</span></div>}
       </section>
     </div>
   </AppShell>;

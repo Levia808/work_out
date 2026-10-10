@@ -18,7 +18,6 @@ export type AiJob<T = unknown> = {
 };
 
 const STORAGE_KEY = 'fittrack:ai-jobs';
-const MAX_JOBS = 12;
 
 function readJobs(): AiJob[] {
   try {
@@ -30,7 +29,9 @@ function readJobs(): AiJob[] {
 }
 
 function writeJobs(jobs: AiJob[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs.slice(-MAX_JOBS)));
+  // Keep every generated report so users can compare changes over time.
+  // The payload is structured JSON and each job has a stable id.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
   window.dispatchEvent(new CustomEvent('fittrack:ai-jobs'));
 }
 
