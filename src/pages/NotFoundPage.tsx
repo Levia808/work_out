@@ -1,0 +1,2 @@
+import { Link } from 'react-router-dom';
+export function NotFoundPage() { return <div className="install-page"><main className="card install-card"><p className="eyebrow">404</p><h1 className="fit-title" style={{ marginTop: 10 }}>页面走丢了</h1><p className="fit-subtitle">回到总览，继续今天的记录。</p><Link to="/" className="primary-btn row" style={{ marginTop: 24, color: '#0a0a0a' }}><span>回到总览</span><span>→</span></Link></main></div>; }

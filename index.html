@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <meta name="description" content="FitTrack 个人健康追踪" />
+    <title>FitTrack</title>
+  </head>
+  <body>
+    <script>
+      (() => { const savedPath = sessionStorage.getItem('fittrack-path'); if (savedPath) { sessionStorage.removeItem('fittrack-path'); history.replaceState(null, '', savedPath); } })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
