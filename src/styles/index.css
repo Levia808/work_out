@@ -10,8 +10,8 @@
 }
 
 * { box-sizing: border-box; }
-html { background: #0a0a0a; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #0a0a0a; overflow-x: hidden; }
+html { background: #0a0a0a; overflow-x: hidden; overscroll-behavior-x: none; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0a0a0a; overflow-x: hidden; overscroll-behavior-x: none; }
 button, input, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
@@ -59,6 +59,39 @@ button { -webkit-tap-highlight-color: transparent; }
 .action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .action-btn { min-height: 86px; display: grid; place-items: center; gap: 8px; padding: 12px 5px; border: 1px solid rgba(255,255,255,.07); background: #1b1b1f; color: #fff; border-radius: 17px; }
 .action-btn span { font-size: .72rem; color: #9a9aa0; }
+
+/* Mobile-safe filter tabs: wrap instead of becoming an accidental horizontal scroller. */
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.segmented-control button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 13px;
+  color: #9a9aa0;
+  background: #161618;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease;
+}
+.segmented-control button.selected,
+.segmented-control button[aria-selected='true'] {
+  color: #0a0a0a;
+  background: #fff;
+  border-color: #fff;
+}
+.segmented-control button:active { transform: scale(.97); }
+.segmented-control button:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: 2px; }
+@media (min-width: 480px) {
+  .segmented-control { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
 
 .bottom-nav { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: min(560px, 100%); display: grid; grid-template-columns: repeat(4, 1fr); padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: rgba(10,10,10,.92); border-top: 1px solid rgba(255,255,255,.06); backdrop-filter: blur(20px); }
 .nav-item { min-height: 48px; display: grid; place-items: center; color: #3f3f46; border-radius: 16px; transition: color .15s ease, background .15s ease; }
@@ -298,8 +331,8 @@ input:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: 3
 .nav-indicator { position: absolute; inset: 0 auto 0 0; width: 25%; border-radius: 16px; background: #161618; transition: transform .38s cubic-bezier(.22, 1, .36, 1); }
 .nav-item { position: relative; z-index: 1; background: transparent !important; }
 
-/* Directional route transitions; the browser remains vertically scrollable. */
-.page-transition { touch-action: pan-y; overflow-x: clip; }
+/* Directional route transitions; keep vertical scrolling native and block accidental horizontal page drift. */
+.page-transition { touch-action: pan-y; }
 .page-transition.slide-in-next { animation-name: slide-in-next; }
 .page-transition.slide-in-prev { animation-name: slide-in-prev; }
 @keyframes slide-in-next {
@@ -383,4 +416,170 @@ input:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: 3
   .duration-value { gap: 5px; }
   .duration-number { font-size: 2.7rem; }
   .duration-unit { font-size: .9rem; }
+}
+
+/* Final mobile type guardrails: keep labels, values, and units on separate readable rows. */
+.fit-title,
+.card-title,
+.card-copy,
+.list-title,
+.list-meta,
+.eyebrow,
+.duration-unit,
+.trend-badge {
+  line-height: 1.35;
+}
+
+.fit-title { line-height: 1.02; }
+.card-copy,
+.list-meta { overflow-wrap: anywhere; }
+.metric-value-wrap { overflow: hidden; }
+.metric-value { gap: 0 4px; line-height: 1; }
+.metric-value .big-number,
+.metric-value .unit { line-height: 1; }
+.metric-card .card-copy { line-height: 1.45; }
+.duration-value { align-items: center; line-height: 1; }
+.duration-number { line-height: 1; }
+.duration-unit { line-height: 1.2; }
+.list-row { align-items: flex-start; }
+.list-row > strong { margin-top: 2px; }
+.trend-badge { line-height: 1.4; }
+
+@media (max-width: 390px) {
+  .metric-card-main { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .metric-value { flex-wrap: wrap; row-gap: 3px; }
+  .metric-card .card-copy { max-width: 16ch; }
+  .duration-value { gap: 6px; }
+}
+
+/* The dock contains one track; keep that track full-width so four targets stay evenly spaced. */
+.bottom-nav { display: block; }
+
+/* Mobile dock: float close to the viewport edges without becoming full-bleed. */
+.fit-shell { padding-bottom: calc(132px + env(safe-area-inset-bottom)); }
+.bottom-nav {
+  width: min(560px, calc(100% - 24px));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 22px;
+  box-shadow: 0 16px 38px rgba(0,0,0,.36);
+}
+.bottom-nav-track { min-height: 48px; }
+@media (max-width: 390px) {
+  .fit-shell { padding-bottom: calc(136px + env(safe-area-inset-bottom)); }
+  .bottom-nav { width: calc(100% - 20px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav, .nav-item, .nav-indicator { transition: none; }
+}
+
+/* Minimal scrollbars: quiet by default, briefly visible while the user scrolls. */
+html,
+body,
+[data-scrollbar] {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color .28s ease;
+}
+html.is-scrolling,
+body.is-scrolling,
+[data-scrollbar].is-scrolling {
+  scrollbar-color: rgba(210, 210, 216, .58) transparent;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+[data-scrollbar]::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+[data-scrollbar]::-webkit-scrollbar-track {
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+[data-scrollbar]::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition: background-color .28s ease;
+}
+html.is-scrolling::-webkit-scrollbar-thumb,
+body.is-scrolling::-webkit-scrollbar-thumb,
+[data-scrollbar].is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(210, 210, 216, .62);
+}
+html::-webkit-scrollbar-corner,
+body::-webkit-scrollbar-corner,
+[data-scrollbar]::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Keep the app a single vertical flow at narrow widths. The document owns the
+   horizontal boundary so route transforms and the fixed dock are not clipped by
+   an intermediate ancestor. */
+#root,
+.fit-app,
+.app-route-shell,
+.page-transition {
+  max-width: 100%;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+.row,
+.row-start,
+.list-row,
+.form-grid,
+.set-row,
+.chart-wrap,
+.nutrition-summary {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.set-row {
+  flex-wrap: wrap;
+}
+
+/* The contribution grid fits the phone viewport instead of introducing a second horizontal gesture. */
+.heatmap-scroll {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+.heatmap {
+  width: 100%;
+  grid-auto-columns: auto;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.heatmap .heat-dot {
+  width: min(12px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html::-webkit-scrollbar-thumb,
+  body::-webkit-scrollbar-thumb,
+  [data-scrollbar]::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
+
+/* Workout plan actions stay explicit and wrap before they can squeeze the heading. */
+.workout-week-bar { display: grid; gap: 14px; }
+.workout-week-heading { min-width: 0; }
+.workout-week-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.workout-week-actions .secondary-btn { min-width: 0; padding-inline: 11px; font-size: .82rem; }
+.workout-week-actions .secondary-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 350px) {
+  .workout-week-actions { grid-template-columns: 1fr; }
 }

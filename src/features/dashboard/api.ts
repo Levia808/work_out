@@ -1,2 +1,5 @@
-import { dashboardData } from '../../lib/demoData';
-export async function getDashboardSummary() { return dashboardData; }
+import { getDashboardSnapshot } from '../../lib/localData';
+
+export async function getDashboardSummary() {
+  return getDashboardSnapshot();
+}

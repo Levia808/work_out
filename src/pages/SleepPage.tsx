@@ -3,39 +3,16 @@ import { BedDouble, ChevronLeft, Moon, Save } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { HealthDataCard } from '../components/HealthDataCard';
+import { useUpsertSleepLog } from '../features/sleep/hooks';
+import { dateKey, getSleepLog } from '../lib/localData';
 import { loadHealthSnapshot, type HealthSnapshot } from '../lib/health';
 import { sleepDurationMinutes } from '../lib/calculations';
 
+function toDate(loggedOn: string, time: string, addDay = false) { const result = new Date(`${loggedOn}T${time}:00`); if (addDay) result.setDate(result.getDate() + 1); return result; }
 export function SleepPage() {
-  const [fellAsleep, setFellAsleep] = useState('23:30');
-  const [woke, setWoke] = useState('07:00');
-  const [saved, setSaved] = useState(false);
-  const [healthSnapshot, setHealthSnapshot] = useState<HealthSnapshot | null>(() => loadHealthSnapshot());
-  const manualDuration = useMemo(() => {
-    const start = new Date(`${fellAsleep <= woke ? '2026-10-09' : '2026-10-08'}T${fellAsleep}:00`);
-    const end = new Date(`2026-10-09T${woke}:00`);
-    return sleepDurationMinutes(start, end);
-  }, [fellAsleep, woke]);
-  const healthDurationMinutes = healthSnapshot?.latestSleepHours !== undefined ? Math.round(healthSnapshot.latestSleepHours * 60) : null;
-  const duration = healthDurationMinutes ?? manualDuration;
-  const hours = Math.floor(duration / 60);
-  const minutes = duration % 60;
-
-  return <AppShell title="作息" subtitle="睡够了，恢复才完整"><div className="stack">
-    <Link to="/records" className="muted row back-link"><ChevronLeft size={17} />返回记录</Link>
-    <section className="card">
-      <div className="row">
-        <div className="metric-value-wrap"><p className="eyebrow">{healthDurationMinutes !== null ? '手机健康数据' : '昨晚睡眠'}</p><div className="duration-value" aria-label={`${hours}小时${minutes}分`}><span className="duration-part"><span className="duration-number">{hours}</span><span className="duration-unit">小时</span></span><span className="duration-part"><span className="duration-number">{minutes}</span><span className="duration-unit">分</span></span></div><p className="card-copy">目标 8 小时 · {Math.round(duration / 480 * 100)}% 达标</p></div>
-        <div className="list-leading metric-leading"><Moon size={26} /></div>
-      </div>
-    </section>
-    <HealthDataCard onImported={setHealthSnapshot} />
-    <section className="card stack">
-      <div className="row"><h2 className="card-title">记录昨晚</h2><BedDouble size={20} className="muted" /></div>
-      <label className="label">入睡时间<input className="input-field" type="time" value={fellAsleep} onChange={event => { setFellAsleep(event.target.value); setSaved(false); }} /></label>
-      <label className="label">起床时间<input className="input-field" type="time" value={woke} onChange={event => { setWoke(event.target.value); setSaved(false); }} /></label>
-      <button className="primary-btn row" type="button" onClick={() => setSaved(true)}><span>{saved ? '已保存' : '保存睡眠记录'}</span><Save size={18} /></button>
-    </section>
-    <section className="card"><h2 className="card-title">达标视图</h2><div className="row sleep-week" style={{ marginTop: 18, alignItems: 'flex-end' }}>{['一', '二', '三', '四', '五', '六', '日'].map((day, index) => <div key={day} style={{ display: 'grid', gap: 8, justifyItems: 'center' }}><span className="muted" style={{ fontSize: '.7rem' }}>{day}</span><span className={`heat-dot level-${index < 5 ? 4 : 0}`} /></div>)}</div></section>
-  </div></AppShell>;
+  const loggedOn = dateKey(); const existing = getSleepLog(loggedOn); const [fellAsleep, setFellAsleep] = useState(existing?.fellAsleepAt.slice(11, 16) ?? ''); const [woke, setWoke] = useState(existing?.wokeAt.slice(11, 16) ?? ''); const [saved, setSaved] = useState(Boolean(existing)); const [healthSnapshot, setHealthSnapshot] = useState<HealthSnapshot | null>(() => loadHealthSnapshot()); const mutation = useUpsertSleepLog();
+  const manualDuration = useMemo(() => { if (!fellAsleep || !woke) return 0; const overnight = woke <= fellAsleep; return sleepDurationMinutes(toDate(loggedOn, fellAsleep), toDate(loggedOn, woke, overnight)); }, [fellAsleep, loggedOn, woke]);
+  const healthDurationMinutes = healthSnapshot?.latestSleepHours !== undefined ? Math.round(healthSnapshot.latestSleepHours * 60) : null; const duration = healthDurationMinutes ?? (existing?.durationMinutes ?? manualDuration); const hours = Math.floor(duration / 60); const minutes = duration % 60;
+  const save = async () => { if (!fellAsleep || !woke || manualDuration <= 0) return; await mutation.mutateAsync({ loggedOn, fellAsleepAt: toDate(loggedOn, fellAsleep).toISOString(), wokeAt: toDate(loggedOn, woke, woke <= fellAsleep).toISOString(), durationMinutes: manualDuration }); setSaved(true); };
+  return <AppShell title="作息" subtitle="睡够了，恢复才完整"><div className="stack"><Link to="/records" className="muted row back-link"><ChevronLeft size={17} />返回记录</Link><section className="card"><div className="row"><div className="metric-value-wrap"><p className="eyebrow">{healthDurationMinutes !== null ? '手机健康数据' : existing ? '今日睡眠' : '尚未记录'}</p>{duration > 0 ? <div className="duration-value" aria-label={`${hours}小时${minutes}分`}><span className="duration-part"><span className="duration-number">{hours}</span><span className="duration-unit">小时</span></span><span className="duration-part"><span className="duration-number">{minutes}</span><span className="duration-unit">分</span></span></div> : <p className="empty-value">-- <span className="unit">小时</span></p>}<p className="card-copy">{duration > 0 ? `手动记录 ${hours} 小时 ${minutes} 分` : '保存入睡和起床时间后显示时长'}</p></div><div className="list-leading metric-leading"><Moon size={26} /></div></div></section><HealthDataCard onImported={setHealthSnapshot} /><section className="card stack"><div className="row"><h2 className="card-title">记录今日作息</h2><BedDouble size={20} className="muted" /></div><label className="label">入睡时间<input className="input-field" type="time" value={fellAsleep} onChange={event => { setFellAsleep(event.target.value); setSaved(false); }} /></label><label className="label">起床时间<input className="input-field" type="time" value={woke} onChange={event => { setWoke(event.target.value); setSaved(false); }} /></label>{mutation.error ? <p className="form-error" role="alert">保存失败：{mutation.error.message}</p> : null}<button className="primary-btn row" type="button" disabled={mutation.isPending || !fellAsleep || !woke} onClick={() => void save()}><span>{mutation.isPending ? '正在保存…' : saved ? '已保存' : '保存睡眠记录'}</span><Save size={18} /></button></section><section className="card"><h2 className="card-title">达标视图</h2><p className="card-copy">仅展示已保存的睡眠记录。</p><div className="row sleep-week" style={{ marginTop: 18, alignItems: 'flex-end' }}>{['一', '二', '三', '四', '五', '六', '日'].map(day => <div key={day} style={{ display: 'grid', gap: 8, justifyItems: 'center' }}><span className="muted" style={{ fontSize: '.7rem' }}>{day}</span><span className="heat-dot level-0" /></div>)}</div></section></div></AppShell>;
 }

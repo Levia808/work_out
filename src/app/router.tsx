@@ -4,6 +4,9 @@ import { ProtectedLayout } from './routes/ProtectedLayout';
 import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { WorkoutsPage } from '../pages/WorkoutsPage';
+import { WorkoutPlanPage } from '../pages/WorkoutPlanPage';
+import { WorkoutExercisePage } from '../pages/WorkoutExercisePage';
+import { WorkoutSessionPage } from '../pages/WorkoutSessionPage';
 import { RecordsPage } from '../pages/RecordsPage';
 import { StatsPage } from '../pages/StatsPage';
 import { SettingsPage } from '../pages/SettingsPage';
@@ -20,6 +23,9 @@ export const router = createBrowserRouter([
   { element: <ProtectedLayout />, children: [{ element: <AppLayout />, children: [
     { index: true, element: <DashboardPage /> },
     { path: 'workouts', element: <WorkoutsPage /> },
+    { path: 'workouts/:planId', element: <WorkoutPlanPage /> },
+    { path: 'workouts/:planId/exercises/:exerciseId', element: <WorkoutExercisePage /> },
+    { path: 'workouts/:planId/session', element: <WorkoutSessionPage /> },
     { path: 'records', element: <RecordsPage /> },
     { path: 'stats', element: <StatsPage /> },
     { path: 'settings', element: <SettingsPage /> },

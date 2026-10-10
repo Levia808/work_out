@@ -1,61 +1,94 @@
-import { Check, ChevronRight, Droplets, Download, Moon, Plus } from 'lucide-react';
+import { Check, ChevronRight, Download, Moon, Plus, Utensils } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { CircularMetric, RingProgress } from '../components/CircularMetric';
 import { Heatmap } from '../components/Heatmap';
 import { ProgressBar } from '../components/ProgressBar';
+import { getDashboardSnapshot, getHabits, getMeals, getSettings, habitHeatmap, habitStreak } from '../lib/localData';
 import { loadHealthSnapshot } from '../lib/health';
-import { dashboardData, habits, workoutPlans } from '../lib/demoData';
 
 export function DashboardPage() {
-  const completed = habits.filter(habit => habit.completed).length;
-  const healthSnapshot = loadHealthSnapshot();
-  const sleepHours = healthSnapshot?.latestSleepHours ?? dashboardData.sleepHours;
-  return <AppShell title="总览" subtitle="周五，10 月 9 日" actionLink={{ to: "/records", label: "添加记录" }}>
+  const [snapshot, setSnapshot] = useState(getDashboardSnapshot);
+  const [healthSleepHours, setHealthSleepHours] = useState<number | undefined>(() => loadHealthSnapshot()?.latestSleepHours);
+
+  useEffect(() => {
+    const sync = () => {
+      setSnapshot(getDashboardSnapshot());
+      setHealthSleepHours(loadHealthSnapshot()?.latestSleepHours);
+    };
+    window.addEventListener('fittrack:data', sync);
+    window.addEventListener('focus', sync);
+    return () => {
+      window.removeEventListener('fittrack:data', sync);
+      window.removeEventListener('focus', sync);
+    };
+  }, []);
+
+  const habits = useMemo(() => getHabits(), [snapshot]);
+  const meals = useMemo(() => getMeals(), [snapshot]);
+  const settings = useMemo(() => getSettings(), [snapshot]);
+  const sleepHours = snapshot.sleepHours ?? healthSleepHours;
+  const hasSleep = sleepHours !== undefined;
+  const hasMeals = meals.length > 0;
+  const calorieProgress = snapshot.calorieGoal && hasMeals ? (snapshot.calories / snapshot.calorieGoal) * 100 : 0;
+  const sleepProgress = settings.sleepGoalMinutes && hasSleep ? (sleepHours / (settings.sleepGoalMinutes / 60)) * 100 : 0;
+  const habitProgress = habits.length ? snapshot.habitProgress : 0;
+  const firstHabit = habits[0];
+
+  return <AppShell title="总览" subtitle="记录真实状态，按你的节奏调整" actionLink={{ to: '/records', label: '添加记录' }}>
     <div className="stack">
       <section className="card card-muted">
-        <div className="row">
-          <div>
-            <p className="eyebrow">今日训练</p>
-            <h2 style={{ margin: '7px 0 0', fontSize: '1.35rem' }}>胸部 + 三头</h2>
-            <p className="card-copy">5 个动作 · 预计 42 分钟</p>
+        {snapshot.todayPlan ? <>
+          <div className="row">
+            <div className="metric-value-wrap">
+              <p className="eyebrow">今日训练</p>
+              <h2 style={{ margin: '7px 0 0', fontSize: '1.35rem' }}>{snapshot.todayPlan.title}</h2>
+              <p className="card-copy">{snapshot.todayPlan.items.length ? `${snapshot.todayPlan.items.length} 个动作` : '尚未添加动作'}</p>
+            </div>
+            <RingProgress value={snapshot.trainingProgress} label="训练进度" />
           </div>
-          <RingProgress value={dashboardData.trainingProgress} label="训练进度" />
-        </div>
-        <div style={{ marginTop: 18 }}>
-          <div className="row"><span className="muted" style={{ fontSize: '.8rem' }}>本周完成 3 / 5 次</span><span className="eyebrow">{dashboardData.trainingProgress}%</span></div>
-          <ProgressBar value={dashboardData.trainingProgress} label="本周训练完成进度" style={{ marginTop: 8 }} />
-        </div>
+          <div style={{ marginTop: 18 }}>
+            <div className="row"><span className="muted" style={{ fontSize: '.8rem' }}>{snapshot.trainingProgress ? '已完成动作' : '尚未开始训练'}</span><span className="eyebrow">{snapshot.trainingProgress}%</span></div>
+            <ProgressBar value={snapshot.trainingProgress} label="今日训练完成进度" style={{ marginTop: 8 }} />
+          </div>
+          <Link to={`/workouts/${snapshot.todayPlan.id}`} className="secondary-btn row" style={{ marginTop: 16, color: '#fff' }}><span>打开今日计划</span><ChevronRight size={18} /></Link>
+        </> : <div className="empty-state compact-empty"><p className="eyebrow">今日训练</p><h2 className="card-title">今天没有已安排的训练</h2><p className="card-copy">在训练页创建计划后，这里会显示今天的动作与进度。</p><Link to="/workouts" className="secondary-btn row" style={{ marginTop: 14, color: '#fff' }}><span>管理训练计划</span><ChevronRight size={18} /></Link></div>}
       </section>
+
       <div className="card-grid dashboard-metric-grid">
-        <CircularMetric label="摄入热量" value={dashboardData.calories} unit="kcal" progress={(dashboardData.calories / dashboardData.calorieGoal) * 100} icon="calories" helper={`目标 ${dashboardData.calorieGoal.toLocaleString()} kcal`} />
-        <CircularMetric label="睡眠" value={sleepHours} unit="小时" progress={(sleepHours / dashboardData.sleepGoal) * 100} icon="sleep" helper="昨晚记录" />
+        <CircularMetric label="摄入热量" value={hasMeals ? snapshot.calories : undefined} unit="kcal" progress={calorieProgress} icon="calories" helper={snapshot.calorieGoal ? `目标 ${snapshot.calorieGoal.toLocaleString()} kcal` : '尚未设置每日目标'} />
+        <CircularMetric label="睡眠" value={hasSleep ? sleepHours : undefined} decimals={1} unit="小时" progress={sleepProgress} icon="sleep" helper={snapshot.sleepGoal ? `目标 ${snapshot.sleepGoal} 小时` : '尚未设置睡眠目标'} />
       </div>
+
       <section className="card">
         <div className="row">
-          <div><p className="eyebrow">习惯完成度</p><h2 style={{ margin: '5px 0 0', fontSize: '1.5rem' }}>{completed} / {habits.length} 项</h2></div>
+          <div><p className="eyebrow">习惯完成度</p><h2 style={{ margin: '5px 0 0', fontSize: '1.5rem' }}>{habits.length ? `${snapshot.habitCount} / ${snapshot.habitTotal} 项` : '尚未添加习惯'}</h2></div>
           <Link to="/records/habits" className="icon-btn" style={{ width: 40, height: 40 }} aria-label="查看习惯"><ChevronRight size={19} /></Link>
         </div>
-        <ProgressBar value={dashboardData.habitProgress} label="习惯完成进度" style={{ marginTop: 17 }} />
-        <p className="card-copy" style={{ marginTop: 10 }}>保持节奏，连续第 8 天</p>
+        <ProgressBar value={habitProgress} label="习惯完成进度" style={{ marginTop: 17 }} />
+        <p className="card-copy" style={{ marginTop: 10 }}>{firstHabit ? `${firstHabit.name} 连续 ${habitStreak(firstHabit.id)} 天` : '添加习惯后，这里会显示真实完成记录。'}</p>
       </section>
+
       <section>
-        <div className="row" style={{ marginBottom: 12 }}><h2 className="card-title">快捷打卡</h2><Link to="/records" className="muted" style={{ fontSize: '.82rem' }}>全部记录</Link></div>
+        <div className="row" style={{ marginBottom: 12 }}><h2 className="card-title">快捷记录</h2><Link to="/records" className="muted" style={{ fontSize: '.82rem' }}>全部记录</Link></div>
         <div className="action-grid">
           <Link className="action-btn" to="/records/habits" aria-label="记录习惯"><Check size={21} /><span>习惯</span></Link>
-          <Link className="action-btn" to="/records/habits" aria-label="记录饮水习惯"><Droplets size={21} /><span>饮水</span></Link>
+          <Link className="action-btn" to="/records/nutrition" aria-label="记录饮食"><Utensils size={21} /><span>饮食</span></Link>
           <Link className="action-btn" to="/records/sleep" aria-label="记录睡眠"><Moon size={21} /><span>睡眠</span></Link>
           <Link className="action-btn" to="/records/body" aria-label="记录体重"><Plus size={21} /><span>体重</span></Link>
         </div>
       </section>
+
       <section className="stack">
         <div className="row"><h2 className="card-title">今日计划</h2><Link to="/workouts" className="muted" style={{ fontSize: '.82rem' }}>查看全部</Link></div>
-        {workoutPlans.map(plan => <div className="card row" key={plan.id}>
-          <div className="row-start"><RingProgress value={plan.progress / plan.exercises * 100} label={`${plan.title}进度`} size="small" /><div><h3 className="card-title">{plan.title}</h3><p className="card-copy">{plan.weekday} · {plan.exercises} 个动作</p></div></div>
-          <Link to="/workouts" className="icon-btn" style={{ width: 40, height: 40 }} aria-label={`打开${plan.title}`}><ChevronRight size={19} /></Link>
-        </div>)}
+        {snapshot.todayPlan ? <div className="card row">
+          <div className="row-start"><RingProgress value={snapshot.trainingProgress} label={`${snapshot.todayPlan.title}进度`} size="small" /><div className="list-content"><h3 className="card-title">{snapshot.todayPlan.title}</h3><p className="card-copy">{snapshot.todayPlan.items.length ? `${snapshot.todayPlan.items.length} 个动作` : '请添加动作'}</p></div></div>
+          <Link to={`/workouts/${snapshot.todayPlan.id}`} className="icon-btn" style={{ width: 40, height: 40 }} aria-label={`打开${snapshot.todayPlan.title}`}><ChevronRight size={19} /></Link>
+        </div> : <div className="card empty-state compact-empty"><p className="card-copy">尚未安排今日计划。</p></div>}
       </section>
-      <Heatmap />
+
+      <Heatmap points={habitHeatmap()} />
       <Link to="/install" className="card row" style={{ color: '#fff' }}><div><p className="eyebrow">FitTrack PWA</p><h2 className="card-title" style={{ marginTop: 5 }}>安装到主屏幕</h2><p className="card-copy">离线也能继续记录每日状态</p></div><Download size={22} className="muted" /></Link>
     </div>
   </AppShell>;

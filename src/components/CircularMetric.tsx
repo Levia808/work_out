@@ -5,7 +5,7 @@ import { AnimatedNumber } from './AnimatedNumber';
 const icons = { training: Dumbbell, calories: Flame, sleep: Moon, habits: Sparkles } as const;
 type IconName = keyof typeof icons;
 
-type Props = { label: string; value: number; decimals?: number; unit?: string; progress: number; icon?: IconName; helper?: string };
+type Props = { label: string; value?: number; decimals?: number; unit?: string; progress: number; icon?: IconName; helper?: string };
 
 function useAnimatedProgress(value: number) {
   const normalized = Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
@@ -44,7 +44,7 @@ export function CircularMetric({ label, value, decimals = 0, unit, progress, ico
     <article className="card metric-card">
       <div className="row metric-card-head"><span className="eyebrow">{label}</span><Icon size={19} className="metric-icon" aria-hidden="true" /></div>
       <div className="metric-card-main">
-        <div className="metric-value-wrap"><div className="metric-value"><AnimatedNumber value={value} decimals={decimals} className="big-number" />{unit ? <span className="unit">{unit}</span> : null}</div><p className="card-copy">{helper ?? `${Math.round(normalized)}% 已完成`}</p></div>
+        <div className="metric-value-wrap"><div className="metric-value">{value === undefined ? <span className="big-number empty-number">--</span> : <AnimatedNumber value={value} decimals={decimals} className="big-number" />}{unit ? <span className="unit">{unit}</span> : null}</div><p className="card-copy">{helper ?? `${Math.round(normalized)}% 已完成`}</p></div>
         <Ring value={normalized} label={`${label}进度`} size="small" />
       </div>
     </article>

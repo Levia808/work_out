@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BottomNav } from '../../components/BottomNav';
 
@@ -20,13 +20,59 @@ export function AppLayout() {
   const currentIndex = navIndex(location.pathname);
   const [direction, setDirection] = useState<'next' | 'prev'>('next');
 
+  useEffect(() => {
+    const viewport = document.documentElement;
+    const body = document.body;
+    let viewportTimer: number | undefined;
+    const containerTimers = new Map<HTMLElement, number>();
+    const revealViewportScrollbar = () => {
+      viewport.classList.add('is-scrolling');
+      body.classList.add('is-scrolling');
+      if (viewportTimer !== undefined) window.clearTimeout(viewportTimer);
+      viewportTimer = window.setTimeout(() => {
+        viewport.classList.remove('is-scrolling');
+        body.classList.remove('is-scrolling');
+      }, 360);
+    };
+    const revealContainerScrollbar = (event: Event) => {
+      const target = event.currentTarget;
+      if (!(target instanceof HTMLElement)) return;
+      target.classList.add('is-scrolling');
+      const timer = containerTimers.get(target);
+      if (timer !== undefined) window.clearTimeout(timer);
+      containerTimers.set(target, window.setTimeout(() => {
+        target.classList.remove('is-scrolling');
+        containerTimers.delete(target);
+      }, 360));
+    };
+    window.addEventListener('scroll', revealViewportScrollbar, { passive: true });
+    const containers = Array.from(document.querySelectorAll<HTMLElement>('[data-scrollbar]'));
+    containers.forEach(container => container.addEventListener('scroll', revealContainerScrollbar, { passive: true }));
+    return () => {
+      window.removeEventListener('scroll', revealViewportScrollbar);
+      if (viewportTimer !== undefined) window.clearTimeout(viewportTimer);
+      viewport.classList.remove('is-scrolling');
+      body.classList.remove('is-scrolling');
+      containers.forEach(container => {
+        container.removeEventListener('scroll', revealContainerScrollbar);
+        const timer = containerTimers.get(container);
+        if (timer !== undefined) window.clearTimeout(timer);
+        container.classList.remove('is-scrolling');
+      });
+    };
+  }, [location.pathname]);
+
   useLayoutEffect(() => {
     const previous = previousIndex.current;
     if (previous !== currentIndex) {
       setDirection(currentIndex > previous ? 'next' : 'prev');
       previousIndex.current = currentIndex;
     }
-  }, [currentIndex]);
+
+    // Each route owns its own scroll position. Reset before the slide enters so
+    // a tab change never reveals a half-scrolled page or hides its header.
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [currentIndex, location.pathname]);
 
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     const touch = event.changedTouches[0];
