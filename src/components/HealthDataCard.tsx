@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { HeartPulse, Upload } from 'lucide-react';
+import { HeartPulse, LoaderCircle, Upload } from 'lucide-react';
 import { healthPlatformLabel, healthSourceLabel, importHealthFile, loadHealthSnapshot, type HealthSnapshot } from '../lib/health';
 
 type HealthDataCardProps = {
@@ -41,7 +41,7 @@ export function HealthDataCard({ onImported }: HealthDataCardProps) {
       </div>
     </div>
     <input ref={inputRef} className="visually-hidden" type="file" accept=".xml,.csv,.json,application/xml,text/csv,application/json" aria-hidden="true" tabIndex={-1} onChange={event => { const file = event.target.files?.[0]; if (file) void handleImport(file); }} />
-    <button className="secondary-btn row health-import-btn" type="button" disabled={busy} onClick={() => inputRef.current?.click()}><span>{busy ? '正在导入…' : `导入${healthPlatformLabel()}`}</span><Upload size={18} /></button>
+    <button className="icon-btn health-import-btn" type="button" disabled={busy} onClick={() => inputRef.current?.click()} aria-label={busy ? '导入健康数据中' : `导入${healthPlatformLabel()}`} title={busy ? '导入中' : `导入${healthPlatformLabel()}`}>{busy ? <LoaderCircle className="spin" size={19} /> : <Upload size={19} />}</button>
     {snapshot ? <div className="health-sync-summary">
       <div className="row"><span className="muted">最近同步</span><span className="eyebrow">{healthSourceLabel(snapshot.source)} · {formatImportedAt(snapshot.importedAt)}</span></div>
       <div className="health-sync-stats">

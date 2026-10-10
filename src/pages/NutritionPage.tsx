@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Apple, Camera, ChevronLeft, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { PhotoSourcePicker } from '../components/PhotoSourcePicker';
 import { ProgressBar } from '../components/ProgressBar';
@@ -18,6 +19,7 @@ export function NutritionPage() {
   const loggedOn = dateKey();
   const [logs, setLogs] = useState(() => getMeals(loggedOn));
   const [adding, setAdding] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({ name: '', meal: 'snack' as MealType, kcal: '', protein: '', carbs: '', fat: '' });
   const [status, setStatus] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
@@ -87,9 +89,9 @@ export function NutritionPage() {
     setPhotoStatus('idle');
     setStatus('已保存 AI 识别结果。');
   };
-  const remove = (id: string) => { deleteMeal(id); setLogs(current => current.filter(item => item.id !== id)); };
+  const remove = () => { if (!pendingDelete) return; deleteMeal(pendingDelete.id); setLogs(current => current.filter(item => item.id !== pendingDelete.id)); setPendingDelete(null); };
 
-  return <AppShell title="饮食" subtitle="只记录已经确认的数据">
+  return <AppShell title="饮食">
     <div className="stack">
       <Link to="/records" className="muted row back-link"><ChevronLeft size={17} />返回记录</Link>
       <section className="card nutrition-summary">
@@ -108,11 +110,12 @@ export function NutritionPage() {
 
       <section className="card">
         <div className="row"><div><h2 className="card-title">今日餐次</h2><p className="card-copy">手动录入或确认 AI 识别结果</p></div><button className="icon-btn" type="button" onClick={() => setAdding(value => !value)} aria-label={adding ? '关闭手动录入' : '添加食物'}>{adding ? <X size={19} /> : <Plus size={19} />}</button></div>
-        {logs.length ? logs.map(item => <div className="list-row" key={item.id}><span className="list-leading"><Apple size={19} /></span><div className="list-content"><div className="list-title">{mealLabels[item.meal]} · {item.name}</div><div className="list-meta">蛋白质 {item.protein}g · 碳水 {item.carbs}g · 脂肪 {item.fat}g · {item.source === 'ai' ? 'AI 已确认' : '手动记录'}</div></div><strong>{item.kcal} kcal</strong><button className="icon-btn small-icon-btn" type="button" onClick={() => remove(item.id)} aria-label={`删除${item.name}`}><Trash2 size={15} /></button></div>) : <p className="card-copy empty-copy">今天还没有饮食记录。</p>}
+        {logs.length ? logs.map(item => <div className="list-row" key={item.id}><span className="list-leading"><Apple size={19} /></span><div className="list-content"><div className="list-title">{mealLabels[item.meal]} · {item.name}</div><div className="list-meta">蛋白质 {item.protein}g · 碳水 {item.carbs}g · 脂肪 {item.fat}g · {item.source === 'ai' ? 'AI 已确认' : '手动记录'}</div></div><strong>{item.kcal} kcal</strong><button className="icon-btn small-icon-btn" type="button" onClick={() => setPendingDelete({ id: item.id, name: item.name })} aria-label={`删除${item.name}`}><Trash2 size={15} /></button></div>) : <p className="card-copy empty-copy">今天还没有饮食记录。</p>}
       </section>
 
       {adding ? <section className="card stack form-panel"><h2 className="card-title">手动添加食物</h2><label className="label">食物名称<input className="input-field" value={form.name} onChange={event => update('name', event.target.value)} placeholder="例如：鸡蛋" /></label><label className="label">餐次<select className="input-field" value={form.meal} onChange={event => update('meal', event.target.value)}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><div className="form-grid"><label className="label">热量（kcal）<input className="input-field" inputMode="decimal" value={form.kcal} onChange={event => update('kcal', event.target.value)} /></label><label className="label">蛋白质（g）<input className="input-field" inputMode="decimal" value={form.protein} onChange={event => update('protein', event.target.value)} /></label><label className="label">碳水（g）<input className="input-field" inputMode="decimal" value={form.carbs} onChange={event => update('carbs', event.target.value)} /></label><label className="label">脂肪（g）<input className="input-field" inputMode="decimal" value={form.fat} onChange={event => update('fat', event.target.value)} /></label></div>{status ? <p className="form-error" role="status">{status}</p> : null}<button className="primary-btn row" type="button" onClick={addManual}><span>保存餐食</span><Plus size={18} /></button></section> : null}
       {status && !adding ? <p className="form-status" role="status">{status}</p> : null}
     </div>
+    <ConfirmDialog open={pendingDelete !== null} title="删除饮食记录？" description={pendingDelete ? `将删除“${pendingDelete.name}”，此操作无法恢复。` : undefined} confirmLabel="删除" danger onConfirm={remove} onCancel={() => setPendingDelete(null)} />
   </AppShell>;
 }

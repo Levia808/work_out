@@ -1,4 +1,4 @@
-import { Check, ImagePlus, LoaderCircle, RotateCcw, ScanLine, Smartphone, X } from 'lucide-react';
+import { Camera, Check, ImagePlus, LoaderCircle, RotateCcw, ScanLine, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 type PhotoStatus = 'idle' | 'reading' | 'compressing' | 'ready' | 'submitting' | 'success' | 'error';
@@ -93,8 +93,8 @@ export function PhotoSourcePicker({ onReady, preview, status = 'idle', statusTex
       <button className="photo-clear" type="button" aria-label="移除图片" onClick={() => { setInternalStatus('idle'); setInternalError(''); onClear?.(); }} disabled={disabled}><X size={16} /></button>
     </div> : null}
     <div className="photo-picker-actions">
-      <button className="secondary-btn row photo-source-btn" type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || ['reading', 'compressing', 'submitting'].includes(currentStatus)}><span><Smartphone size={17} />拍照</span><span className="photo-source-hint">摄像头</span></button>
-      <button className="secondary-btn row photo-source-btn" type="button" onClick={() => galleryRef.current?.click()} disabled={disabled || ['reading', 'compressing', 'submitting'].includes(currentStatus)}><span><ImagePlus size={17} />相册</span><span className="photo-source-hint">图片库</span></button>
+      <button className="secondary-btn photo-source-btn" type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || ['reading', 'compressing', 'submitting'].includes(currentStatus)} aria-label="拍照" title="拍照"><Camera size={22} /></button>
+      <button className="secondary-btn photo-source-btn" type="button" onClick={() => galleryRef.current?.click()} disabled={disabled || ['reading', 'compressing', 'submitting'].includes(currentStatus)} aria-label="打开相册" title="相册"><ImagePlus size={22} /></button>
     </div>
     <input ref={cameraRef} className="visually-hidden" aria-hidden="true" tabIndex={-1} type="file" accept="image/*" capture="environment" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectFile(file, 'camera'); }} />
     <input ref={galleryRef} className="visually-hidden" aria-hidden="true" tabIndex={-1} type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectFile(file, 'gallery'); }} />

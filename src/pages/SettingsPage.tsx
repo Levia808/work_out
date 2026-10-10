@@ -99,7 +99,7 @@ export function SettingsPage() {
     setSigningOut(false);
   };
 
-  return <AppShell title="设置" subtitle="只保存你主动填写的目标与密钥" actions={false}>
+  return <AppShell title="设置" actions={false}>
     <div className="stack">
       <section className="card row">
         <div className="row-start"><span className="list-leading"><UserRound size={21} /></span><div><h2 className="card-title">{name}</h2><p className="card-copy">{email ?? '本地模式 · 数据保存在当前设备'}</p></div></div>

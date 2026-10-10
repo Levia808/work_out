@@ -95,7 +95,7 @@ export function StatsPage() {
     }
   };
 
-  return <AppShell title="统计" subtitle="只展示你已经记录的数据">
+  return <AppShell title="统计">
     <div className="stack">
       <div className="card-grid">
         <div className="card metric-card">

@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Download, Moon, Plus, Utensils } from 'lucide-react';
+import { Check, ChevronRight, Download, Moon, Scale, Utensils } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
@@ -36,7 +36,7 @@ export function DashboardPage() {
   const habitProgress = habits.length ? snapshot.habitProgress : 0;
   const firstHabit = habits[0];
 
-  return <AppShell title="总览" subtitle="记录真实状态，按你的节奏调整" actionLink={{ to: '/records', label: '添加记录' }}>
+  return <AppShell title="总览" actionLink={{ to: '/records', label: '添加记录' }}>
     <div className="stack">
       <section className="card card-muted">
         {snapshot.todayPlan ? <>
@@ -73,10 +73,10 @@ export function DashboardPage() {
       <section>
         <div className="row" style={{ marginBottom: 12 }}><h2 className="card-title">快捷记录</h2><Link to="/records" className="muted" style={{ fontSize: '.82rem' }}>全部记录</Link></div>
         <div className="action-grid">
-          <Link className="action-btn" to="/records/habits" aria-label="记录习惯"><Check size={21} /><span>习惯</span></Link>
-          <Link className="action-btn" to="/records/nutrition" aria-label="记录饮食"><Utensils size={21} /><span>饮食</span></Link>
-          <Link className="action-btn" to="/records/sleep" aria-label="记录睡眠"><Moon size={21} /><span>睡眠</span></Link>
-          <Link className="action-btn" to="/records/body" aria-label="记录体重"><Plus size={21} /><span>体重</span></Link>
+          <Link className="action-btn icon-only-action" to="/records/habits" aria-label="记录习惯" title="习惯"><Check size={23} /></Link>
+          <Link className="action-btn icon-only-action" to="/records/nutrition" aria-label="记录饮食" title="饮食"><Utensils size={23} /></Link>
+          <Link className="action-btn icon-only-action" to="/records/sleep" aria-label="记录睡眠" title="睡眠"><Moon size={23} /></Link>
+          <Link className="action-btn icon-only-action" to="/records/body" aria-label="记录体重" title="体重"><Scale size={23} /></Link>
         </div>
       </section>
 
