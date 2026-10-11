@@ -32,21 +32,51 @@ function model(provider: AiProvider, multimodal = false) {
   // image_url content in the OpenAI-compatible Chat Completions API.
   return 'deepseek-flash';
 }
-function extractText(payload: unknown): string {
-  const value = payload as { choices?: Array<{ message?: { content?: unknown } }> };
-  const content = value.choices?.[0]?.message?.content;
-  if (Array.isArray(content)) {
-    return content.map(part => {
-      if (typeof part === 'string') return part;
-      const item = part as { text?: unknown };
-      return typeof item.text === 'string' ? item.text : '';
-    }).join('');
-  }
+function textFromContent(content: unknown): string {
   if (typeof content === 'string') return content;
-  // A few OpenAI-compatible gateways return an already-decoded object even
-  // though the API type says `content` is a string. Keep that response
-  // parseable instead of turning it into "[object Object]".
-  return content && typeof content === 'object' ? JSON.stringify(content) : '';
+  if (!Array.isArray(content)) return '';
+  return content.map(part => {
+    if (typeof part === 'string') return part;
+    if (!part || typeof part !== 'object') return '';
+    const value = part as { text?: unknown; content?: unknown };
+    if (typeof value.text === 'string') return value.text;
+    return textFromContent(value.content);
+  }).join('');
+}
+
+function extractText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const value = payload as {
+    choices?: Array<{
+      text?: unknown;
+      delta?: { content?: unknown };
+      message?: { content?: unknown; reasoning_content?: unknown; output_text?: unknown };
+    }>;
+    output_text?: unknown;
+    output?: Array<{ content?: unknown; text?: unknown }>;
+  };
+  const choice = value.choices?.[0];
+  const candidates = [
+    choice?.message?.content,
+    choice?.message?.output_text,
+    choice?.text,
+    choice?.delta?.content,
+    value.output_text,
+    ...(value.output ?? []).flatMap(item => [item.content, item.text]),
+    // Reasoning models can occasionally put the final JSON in this field
+    // when the normal content field is empty. It is parsed by parseAiJson,
+    // which safely extracts the JSON portion from any surrounding reasoning.
+    choice?.message?.reasoning_content,
+  ];
+  for (const candidate of candidates) {
+    const text = textFromContent(candidate);
+    if (text.trim()) return text;
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      const serialized = JSON.stringify(candidate);
+      if (serialized && serialized !== '{}') return serialized;
+    }
+  }
+  return '';
 }
 
 function stripCodeFence(text: string) {
@@ -154,16 +184,34 @@ async function callProvider(provider: AiProvider, apiKey: string, messages: unkn
   if (!apiKey.trim()) throw new Error(`请先在设置中填写${provider === 'qwen' ? '千问' : 'DeepSeek'} API Key。`);
   const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(endpoint(provider), { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` }, body: JSON.stringify({
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` };
+    const request = (withJsonMode: boolean) => fetch(endpoint(provider), {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify({
         model: model(provider, multimodal),
         temperature,
         messages,
-        response_format: { type: 'json_object' },
-        max_tokens: 2_000,
-      }) });
-    const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        stream: false,
+        ...(withJsonMode ? { response_format: { type: 'json_object' } } : {}),
+        max_tokens: 4_000,
+      }),
+    });
+    let response = await request(true);
+    let payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
-    return extractText(payload);
+    let text = extractText(payload);
+    // Some OpenAI-compatible gateways return HTTP 200 but omit message.content
+    // when JSON mode is enabled. Retry once without that optional parameter;
+    // the prompt still requires JSON and the same parser validates the result.
+    if (!text.trim()) {
+      response = await request(false);
+      payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
+      text = extractText(payload);
+    }
+    return text;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw new Error('AI 请求超时，请检查网络后重试。');
     throw error;
