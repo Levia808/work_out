@@ -230,6 +230,10 @@ async function callProvider(provider: AiProvider, apiKey: string, messages: unkn
         messages,
         stream: false,
         ...(withJsonMode ? { response_format: { type: 'json_object' } } : {}),
+        // DeepSeek Flash enables thinking by default. For this app the visible
+        // response must be the structured JSON itself; leaving thinking on can
+        // consume the output budget and produce an empty message.content.
+        ...(provider === 'deepseek' ? { thinking: { type: 'disabled' }, reasoning_effort: 'none' } : {}),
         max_tokens: 4_000,
       }),
     });
