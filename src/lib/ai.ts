@@ -13,14 +13,49 @@ export type TrainingAnalysisMetric = {
   progress: number | null;
 };
 export type TrainingSuggestion = { title: string; body: string; basis: string; priority: 'high' | 'medium' | 'low' };
-export type TrainingAnalysis = {
+export type TrainingAnalysisTrend = { title: string; unit: string; labels: string[]; values: Array<number | null> };
+export type TrainingAnalysisCompact = {
   summary: string;
   strengths: string[];
   suggestions: TrainingSuggestion[];
   dataNote: string;
   score: { value: number | null; label: string; basis: string };
   metrics: TrainingAnalysisMetric[];
-  trend: { title: string; unit: string; labels: string[]; values: Array<number | null> };
+  trend: TrainingAnalysisTrend;
+};
+export type TrainingAnalysisCoverage = {
+  period: string;
+  included: string[];
+  missing: string[];
+};
+export type TrainingAnalysisHighlight = {
+  title: string;
+  detail: string;
+  basis: string;
+  metricKey?: TrainingMetricKey;
+};
+export type TrainingAnalysisMetricDetail = {
+  key: TrainingMetricKey;
+  title: string;
+  value: number | null;
+  unit: string;
+  interpretation: string;
+  evidence: string;
+  progress: number | null;
+};
+export type TrainingAnalysisNextStep = TrainingSuggestion;
+export type TrainingAnalysisDetail = {
+  overview: string;
+  coverage: TrainingAnalysisCoverage;
+  highlights: TrainingAnalysisHighlight[];
+  metricDetails: TrainingAnalysisMetricDetail[];
+  trends: TrainingAnalysisTrend[];
+  nextSteps: TrainingAnalysisNextStep[];
+  cautions: string[];
+};
+export type TrainingAnalysis = {
+  compact: TrainingAnalysisCompact;
+  detailed: TrainingAnalysisDetail;
 };
 
 function endpoint(provider: AiProvider) { return provider === 'qwen' ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' : 'https://api.deepseek.com/chat/completions'; }
@@ -255,75 +290,173 @@ function nullableNumber(value: unknown, min = Number.NEGATIVE_INFINITY, max = Nu
   return Number.isFinite(number) && number >= min && number <= max ? number : null;
 }
 
-function normalizeTrainingAnalysisValue(input: unknown): TrainingAnalysis {
-  const raw = (input ?? {}) as Record<string, unknown>;
-  const strengths = Array.isArray(raw.strengths) ? raw.strengths.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
-  const rawSuggestions = Array.isArray(raw.suggestions) ? raw.suggestions : [];
-  const suggestions: TrainingSuggestion[] = rawSuggestions.map(item => {
-    if (typeof item === 'string') return { title: '建议', body: item.trim(), basis: '', priority: 'medium' as const };
-    const value = (item ?? {}) as Record<string, unknown>;
-    const priority: TrainingSuggestion['priority'] = value.priority === 'high' || value.priority === 'low' ? value.priority : 'medium';
-    return {
-      title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : '建议',
-      body: typeof value.body === 'string' ? value.body.trim() : '',
-      basis: typeof value.basis === 'string' ? value.basis.trim() : '',
-      priority,
-    };
-  }).filter(item => item.body);
+const metricKeys: TrainingMetricKey[] = ['training', 'sleep', 'nutrition', 'habits', 'body'];
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const textValue = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+const textList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
 
-  const rawMetrics = Array.isArray(raw.metrics) ? raw.metrics : [];
-  const validKeys: TrainingMetricKey[] = ['training', 'sleep', 'nutrition', 'habits', 'body'];
-  const metrics: TrainingAnalysisMetric[] = rawMetrics.map(item => {
-    const value = (item ?? {}) as Record<string, unknown>;
-    const key = validKeys.includes(value.key as TrainingMetricKey) ? value.key as TrainingMetricKey : 'training';
-    return {
-      key,
-      label: typeof value.label === 'string' && value.label.trim() ? value.label.trim() : key,
-      value: nullableNumber(value.value),
-      unit: typeof value.unit === 'string' ? value.unit.trim() : '',
-      note: typeof value.note === 'string' ? value.note.trim() : '',
-      progress: nullableNumber(value.progress, 0, 100),
-    };
-  }).filter((item, index, list) => list.findIndex(candidate => candidate.key === item.key) === index);
+function normalizeMetricKey(value: unknown): TrainingMetricKey | null {
+  return metricKeys.includes(value as TrainingMetricKey) ? value as TrainingMetricKey : null;
+}
 
-  const rawTrend = (raw.trend ?? {}) as Record<string, unknown>;
-  const labels = Array.isArray(rawTrend.labels) ? rawTrend.labels.filter((item): item is string => typeof item === 'string').map(item => item.trim()) : [];
-  const values = Array.isArray(rawTrend.values) ? rawTrend.values.map(item => nullableNumber(item, 0, 100)) : [];
-  const trendValues = labels.map((_, index) => values[index] ?? null);
-  const scoreRaw = (raw.score ?? {}) as Record<string, unknown>;
-  const scoreValue = nullableNumber(scoreRaw.value, 0, 100);
-
+function normalizeTrend(input: unknown, fallbackTitle = '趋势'): TrainingAnalysisTrend {
+  const raw = isRecord(input) ? input : {};
+  const labels = Array.isArray(raw.labels) ? raw.labels.map(textValue) : [];
+  const values = Array.isArray(raw.values) ? raw.values.map(value => nullableNumber(value, 0, 100)) : [];
   return {
-    summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
-    strengths,
-    suggestions,
-    dataNote: typeof raw.dataNote === 'string' ? raw.dataNote.trim() : '',
-    score: {
-      value: scoreValue,
-      label: typeof scoreRaw.label === 'string' && scoreRaw.label.trim() ? scoreRaw.label.trim() : '执行度',
-      basis: typeof scoreRaw.basis === 'string' ? scoreRaw.basis.trim() : '',
-    },
-    metrics,
-    trend: {
-      title: typeof rawTrend.title === 'string' && rawTrend.title.trim() ? rawTrend.title.trim() : '趋势',
-      unit: typeof rawTrend.unit === 'string' ? rawTrend.unit.trim() : '%',
-      labels,
-      values: trendValues,
-    },
+    title: textValue(raw.title) || fallbackTitle,
+    unit: textValue(raw.unit) || '%',
+    labels,
+    values: labels.map((_, index) => values[index] ?? null),
   };
 }
 
+function normalizeSuggestions(input: unknown): TrainingSuggestion[] {
+  if (!Array.isArray(input)) return [];
+  return input.map(item => {
+    if (typeof item === 'string') return { title: '建议', body: item.trim(), basis: '', priority: 'medium' as const };
+    const value = isRecord(item) ? item : {};
+    const priority: TrainingSuggestion['priority'] = value.priority === 'high' || value.priority === 'low' ? value.priority : 'medium';
+    return {
+      title: textValue(value.title) || '建议',
+      body: textValue(value.body) || textValue(value.detail),
+      basis: textValue(value.basis),
+      priority,
+    };
+  }).filter(item => item.body);
+}
+
+function normalizeMetrics(input: unknown): TrainingAnalysisMetric[] {
+  if (!Array.isArray(input)) return [];
+  return input.map(item => {
+    const value = isRecord(item) ? item : {};
+    const key = normalizeMetricKey(value.key) ?? 'training';
+    return {
+      key,
+      label: textValue(value.label) || key,
+      value: nullableNumber(value.value),
+      unit: textValue(value.unit),
+      note: textValue(value.note) || textValue(value.interpretation),
+      progress: nullableNumber(value.progress, 0, 100),
+    };
+  }).filter((item, index, list) => list.findIndex(candidate => candidate.key === item.key) === index);
+}
+
+function normalizeScore(input: unknown) {
+  const raw = isRecord(input) ? input : {};
+  return {
+    value: nullableNumber(raw.value, 0, 100),
+    label: textValue(raw.label) || '执行度',
+    basis: textValue(raw.basis),
+  };
+}
+
+function normalizeCompact(input: unknown): TrainingAnalysisCompact {
+  const raw = isRecord(input) ? input : {};
+  return {
+    summary: textValue(raw.summary),
+    strengths: textList(raw.strengths),
+    suggestions: normalizeSuggestions(raw.suggestions),
+    dataNote: textValue(raw.dataNote),
+    score: normalizeScore(raw.score),
+    metrics: normalizeMetrics(raw.metrics),
+    trend: normalizeTrend(raw.trend),
+  };
+}
+
+function defaultDetailed(compact: TrainingAnalysisCompact): TrainingAnalysisDetail {
+  const included = compact.metrics.filter(metric => metric.value !== null).map(metric => metric.label);
+  const missing = compact.metrics.filter(metric => metric.value === null).map(metric => metric.label);
+  return {
+    overview: compact.summary,
+    coverage: { period: compact.dataNote || '当前分析区间', included, missing },
+    highlights: compact.strengths.slice(0, 4).map((item, index) => ({ title: `记录亮点 ${index + 1}`, detail: item, basis: '来自精简报告中的已记录数据。' })),
+    metricDetails: compact.metrics.map(metric => ({
+      key: metric.key,
+      title: metric.label,
+      value: metric.value,
+      unit: metric.unit,
+      interpretation: metric.note || '暂无可确认的解读。',
+      evidence: metric.note || '暂无可确认的证据。',
+      progress: metric.progress,
+    })),
+    trends: compact.trend.labels.length ? [compact.trend] : [],
+    nextSteps: compact.suggestions,
+    cautions: compact.dataNote ? [compact.dataNote] : [],
+  };
+}
+
+function normalizeDetailed(input: unknown, compact: TrainingAnalysisCompact): TrainingAnalysisDetail {
+  const raw = isRecord(input) ? input : {};
+  const coverageRaw = isRecord(raw.coverage) ? raw.coverage : {};
+  const highlights = Array.isArray(raw.highlights) ? raw.highlights.map(item => {
+    const value = isRecord(item) ? item : {};
+    const metricKey = normalizeMetricKey(value.metricKey);
+    return {
+      title: textValue(value.title) || '分析要点',
+      detail: textValue(value.detail) || textValue(value.body),
+      basis: textValue(value.basis),
+      ...(metricKey ? { metricKey } : {}),
+    };
+  }).filter(item => item.detail) : [];
+  const metricDetails = Array.isArray(raw.metricDetails) ? raw.metricDetails.map(item => {
+    const value = isRecord(item) ? item : {};
+    return {
+      key: normalizeMetricKey(value.key) ?? 'training',
+      title: textValue(value.title) || textValue(value.label) || '指标',
+      value: nullableNumber(value.value),
+      unit: textValue(value.unit),
+      interpretation: textValue(value.interpretation) || textValue(value.note),
+      evidence: textValue(value.evidence) || textValue(value.basis),
+      progress: nullableNumber(value.progress, 0, 100),
+    };
+  }).filter((item, index, list) => item.title && list.findIndex(candidate => candidate.key === item.key) === index) : [];
+  const trends = Array.isArray(raw.trends) ? raw.trends.map((item, index) => normalizeTrend(item, `趋势 ${index + 1}`)).filter(item => item.labels.length) : [];
+  const nextSteps = normalizeSuggestions(raw.nextSteps);
+  const normalized: TrainingAnalysisDetail = {
+    overview: textValue(raw.overview) || compact.summary,
+    coverage: {
+      period: textValue(coverageRaw.period) || compact.dataNote || '当前分析区间',
+      included: textList(coverageRaw.included),
+      missing: textList(coverageRaw.missing),
+    },
+    highlights,
+    metricDetails,
+    trends,
+    nextSteps,
+    cautions: textList(raw.cautions),
+  };
+  const fallback = defaultDetailed(compact);
+  return {
+    overview: normalized.overview || fallback.overview,
+    coverage: {
+      period: normalized.coverage.period,
+      included: normalized.coverage.included.length ? normalized.coverage.included : fallback.coverage.included,
+      missing: normalized.coverage.missing.length ? normalized.coverage.missing : fallback.coverage.missing,
+    },
+    highlights: normalized.highlights.length ? normalized.highlights : fallback.highlights,
+    metricDetails: normalized.metricDetails.length ? normalized.metricDetails : fallback.metricDetails,
+    trends: normalized.trends.length ? normalized.trends : fallback.trends,
+    nextSteps: normalized.nextSteps.length ? normalized.nextSteps : fallback.nextSteps,
+    cautions: normalized.cautions.length ? normalized.cautions : fallback.cautions,
+  };
+}
+
+/** Normalize both the current two-level response and legacy flat reports. */
 export function normalizeTrainingAnalysis(input: unknown): TrainingAnalysis {
-  return normalizeTrainingAnalysisValue(input);
+  const raw = isRecord(input) ? input : {};
+  const compact = normalizeCompact(isRecord(raw.compact) ? raw.compact : raw);
+  const detailed = normalizeDetailed(raw.detailed, compact);
+  return { compact, detailed };
 }
 
 export async function analyzeTraining(provider: AiProvider, apiKey: string, data: TrainingAnalytics): Promise<TrainingAnalysis> {
   const text = await callProvider(provider, apiKey, [
-    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于这些已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须明确写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须使用以下结构：{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]}. score.value 与 metrics.progress 只有在数据足够时填写 0-100，否则为 null。trend.values 表示实际数据支持的 0-100 变化，不存在的数据用 null，labels 与 values 长度一致。每条 suggestions 必须引用真实数据维度作为 basis。dataNote 必须说明分析区间、覆盖的数据项和缺失项。' },
+    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须同时返回 compact（适合统计首页的精简版）和 detailed（适合二级页面的详细版），结构如下：{compact:{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]},detailed:{overview:string,coverage:{period:string,included:string[],missing:string[]},highlights:[{title:string,detail:string,basis:string,metricKey?:"training"|"sleep"|"nutrition"|"habits"|"body"}],metricDetails:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",title:string,value:number|null,unit:string,interpretation:string,evidence:string,progress:number|null}],trends:[{title:string,unit:string,labels:string[],values:(number|null)[]}],nextSteps:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}],cautions:string[]}}。score.value、metrics.progress 和 metricDetails.progress 只有数据足够时填写 0-100，否则为 null。所有 trend 的 labels 与 values 长度一致，不存在的数据用 null。每条建议和证据必须引用真实数据维度；不要输出任何未在输入中出现的数值。' },
     { role: 'user', content: JSON.stringify(data) },
   ], 0.2);
-  const result = normalizeTrainingAnalysisValue(parseAiJson<unknown>(text));
-  if (!result.summary || !result.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
+  const result = normalizeTrainingAnalysis(parseAiJson<unknown>(text));
+  if (!result.compact.summary || !result.compact.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
   return result;
 }
 

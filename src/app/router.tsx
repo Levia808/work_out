@@ -9,6 +9,8 @@ import { WorkoutExercisePage } from '../pages/WorkoutExercisePage';
 import { WorkoutSessionPage } from '../pages/WorkoutSessionPage';
 import { RecordsPage } from '../pages/RecordsPage';
 import { StatsPage } from '../pages/StatsPage';
+import { StatsReportPage } from '../pages/StatsReportPage';
+import { StatsHistoryPage } from '../pages/StatsHistoryPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { InstallPage } from '../pages/InstallPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
@@ -28,6 +30,8 @@ export const router = createBrowserRouter([
     { path: 'workouts/:planId/session', element: <WorkoutSessionPage /> },
     { path: 'records', element: <RecordsPage /> },
     { path: 'stats', element: <StatsPage /> },
+    { path: 'stats/report/:jobId', element: <StatsReportPage /> },
+    { path: 'stats/history', element: <StatsHistoryPage /> },
     { path: 'settings', element: <SettingsPage /> },
     { path: 'records/nutrition', element: <NutritionPage /> },
     { path: 'records/sleep', element: <SleepPage /> },

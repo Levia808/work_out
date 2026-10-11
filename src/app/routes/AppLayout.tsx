@@ -6,10 +6,10 @@ const primaryRoutes = ['/', '/workouts', '/records', '/stats'] as const;
 
 function navIndex(pathname: string) {
   if (pathname === '/') return 0;
-  if (pathname.startsWith('/workouts')) return 1;
-  if (pathname.startsWith('/records')) return 2;
-  if (pathname.startsWith('/stats')) return 3;
-  return 0;
+  if (pathname === '/workouts') return 1;
+  if (pathname === '/records') return 2;
+  if (pathname === '/stats') return 3;
+  return -1;
 }
 
 export function AppLayout() {
@@ -92,6 +92,10 @@ export function AppLayout() {
     const deltaY = touch.clientY - start.y;
     if (Math.abs(deltaX) < 64 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return;
 
+    // Nested screens keep their own back/forward controls. Do not turn a
+    // horizontal gesture inside a detail screen into an unexpected jump to a
+    // primary tab.
+    if (currentIndex < 0) return;
     const nextIndex = deltaX < 0 ? Math.min(primaryRoutes.length - 1, currentIndex + 1) : Math.max(0, currentIndex - 1);
     if (nextIndex !== currentIndex) navigate(primaryRoutes[nextIndex]);
   };

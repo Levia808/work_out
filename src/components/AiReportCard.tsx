@@ -1,11 +1,13 @@
-import { Activity, Check, CircleAlert, Dumbbell, Flame, Lightbulb, Moon, Scale, Target } from 'lucide-react';
+import { Activity, ArrowUpRight, Check, CircleAlert, Dumbbell, Flame, Lightbulb, Moon, Scale } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import type { TrainingAnalysis, TrainingAnalysisMetric, TrainingMetricKey } from '../lib/ai';
+import { Link } from 'react-router-dom';
+import type { TrainingAnalysisCompact, TrainingAnalysisMetric, TrainingAnalysisTrend, TrainingMetricKey } from '../lib/ai';
 import { AnimatedNumber } from './AnimatedNumber';
 
 type AiReportCardProps = {
-  report: TrainingAnalysis;
+  report: { compact: TrainingAnalysisCompact };
   provider?: string;
+  detailHref?: string;
 };
 
 const metricIcons: Record<TrainingMetricKey, typeof Activity> = {
@@ -17,14 +19,14 @@ const metricIcons: Record<TrainingMetricKey, typeof Activity> = {
 };
 
 function metricValue(metric: TrainingAnalysisMetric) {
-  if (metric.value === null) return <span className="report-empty-value">—</span>;
+  if (metric.value === null) return <span className="report-empty-value">暂无</span>;
   const decimals = Number.isInteger(metric.value) ? 0 : 1;
   return <><AnimatedNumber value={metric.value} decimals={decimals} /><span className="unit">{metric.unit}</span></>;
 }
 
-function MetricTile({ metric }: { metric: TrainingAnalysisMetric }) {
+function MetricTile({ metric, index }: { metric: TrainingAnalysisMetric; index: number }) {
   const Icon = metricIcons[metric.key];
-  return <article className="report-metric-tile">
+  return <article className="report-metric-tile" style={{ '--report-delay': `${index * 55}ms` } as CSSProperties}>
     <div className="row report-metric-heading"><span className="report-metric-icon"><Icon size={16} /></span><span className="report-metric-label">{metric.label}</span></div>
     <div className="report-metric-value">{metricValue(metric)}</div>
     {metric.note ? <p className="report-metric-note">{metric.note}</p> : null}
@@ -32,44 +34,57 @@ function MetricTile({ metric }: { metric: TrainingAnalysisMetric }) {
   </article>;
 }
 
-function ScoreRing({ value, label }: { value: number | null; label: string }) {
+export function AiScoreRing({ value, label, size = 'normal' }: { value: number | null; label: string; size?: 'normal' | 'large' }) {
   const background = value === null ? '#2a2a2e' : `conic-gradient(#fff ${value}%, #3f3f46 ${value}% 100%)`;
-  return <div className="report-score-wrap">
+  return <div className={`report-score-wrap ${size === 'large' ? 'is-large' : ''}`}>
     <div className="report-score-ring" style={{ background } as CSSProperties} role="img" aria-label={value === null ? `${label}暂无数据` : `${label}${Math.round(value)}分`}>
-      <div className="report-score-center">{value === null ? <span className="report-score-empty">—</span> : <><AnimatedNumber value={value} /><span className="report-score-unit">%</span></>}</div>
+      <div className="report-score-center">{value === null ? <span className="report-score-empty">暂无</span> : <><AnimatedNumber value={value} /><span className="report-score-unit">%</span></>}</div>
     </div>
     <span className="report-score-label">{label}</span>
   </div>;
 }
 
-function TrendChart({ report }: { report: TrainingAnalysis }) {
-  const { labels, values, title, unit } = report.trend;
+export function AiTrendChart({ trend, compact = false }: { trend: TrainingAnalysisTrend; compact?: boolean }) {
+  const { labels, values, title, unit } = trend;
   const hasValues = values.some(value => value !== null);
   if (!hasValues) return <div className="report-empty-chart"><Activity size={18} /><span>暂无足够数据形成趋势</span></div>;
-  return <div className="report-trend-wrap">
+  const width = Math.max(220, labels.length * 54);
+  const height = compact ? 92 : 132;
+  const points = values.map((value, index) => {
+    const x = labels.length === 1 ? width / 2 : (index / (labels.length - 1)) * (width - 16) + 8;
+    const y = value === null ? height - 14 : height - 18 - (value / 100) * (height - 32);
+    return { x, y, value };
+  });
+  return <div className={`report-trend-wrap ${compact ? 'is-compact' : ''}`}>
     <div className="row report-section-title"><span>{title}</span><span className="muted">{unit}</span></div>
-    <div className="report-trend-chart" role="img" aria-label={`${title}图表`}>
-      {values.map((value, index) => <div className="report-trend-column" key={`${labels[index] ?? 'point'}-${index}`}>
-        <div className="report-trend-bar-track"><span className={value === null ? 'is-empty' : ''} style={{ height: value === null ? '10%' : `${Math.max(8, value)}%` }} /></div>
-        <span className="report-trend-label">{labels[index] ?? '—'}</span>
-      </div>)}
+    <div className="report-line-chart" role="img" aria-label={`${title}图表`}>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <line x1="8" x2={width - 8} y1={height - 18} y2={height - 18} className="chart-axis" />
+        <polyline points={points.filter(point => point.value !== null).map(point => `${point.x},${point.y}`).join(' ')} className="chart-line" />
+        {points.map((point, index) => point.value === null ? null : <circle key={`${labels[index]}-${index}`} cx={point.x} cy={point.y} r={compact ? 3 : 4} className="chart-point"><title>{`${labels[index]} ${point.value}${unit}`}</title></circle>)}
+      </svg>
+      <div className="report-line-labels">{labels.map((label, index) => <span key={`${label}-${index}`}>{label || '—'}</span>)}</div>
     </div>
   </div>;
 }
 
-export function AiReportCard({ report, provider }: AiReportCardProps) {
+export function AiReportCard({ report, provider, detailHref }: AiReportCardProps) {
+  const compact = report.compact;
+  const keyStrengths = compact.strengths.slice(0, 3);
+  const keySuggestions = compact.suggestions.slice(0, 2);
   return <article className="ai-report-card report-reveal">
     <header className="report-header">
-      <div className="report-header-copy"><h3 className="report-title">训练状态摘要</h3><p className="report-summary">{report.summary}</p></div>
-      <ScoreRing value={report.score.value} label={report.score.label} />
+      <div className="report-header-copy"><h3 className="report-title">训练状态摘要</h3><p className="report-summary">{compact.summary || '暂无可用摘要。'}</p></div>
+      <AiScoreRing value={compact.score.value} label={compact.score.label} />
     </header>
-    {report.score.basis ? <p className="report-basis"><Target size={14} />{report.score.basis}</p> : null}
-    {report.metrics.length ? <div className="report-metric-grid">{report.metrics.map(metric => <MetricTile key={metric.key} metric={metric} />)}</div> : null}
-    <TrendChart report={report} />
-    <div className="report-columns">
-      <section className="report-list-section"><div className="report-section-title"><Check size={15} />做得好</div>{report.strengths.length ? <ul className="report-bullet-list">{report.strengths.map(item => <li key={item}>{item}</li>)}</ul> : <p className="report-empty-copy">暂无可确认的优势</p>}</section>
-      <section className="report-list-section"><div className="report-section-title"><Lightbulb size={15} />下一步</div>{report.suggestions.length ? <div className="report-suggestion-list">{report.suggestions.map((item, index) => <div className={`report-suggestion priority-${item.priority}`} key={`${item.title}-${index}`}><div className="row"><strong>{item.title}</strong>{item.priority === 'high' ? <CircleAlert size={14} /> : null}</div><p>{item.body}</p>{item.basis ? <span>{item.basis}</span> : null}</div>)}</div> : <p className="report-empty-copy">暂无建议</p>}</section>
+    {compact.score.basis ? <p className="report-basis"><Activity size={14} />{compact.score.basis}</p> : null}
+    {compact.metrics.length ? <div className="report-metric-grid">{compact.metrics.map((metric, index) => <MetricTile key={metric.key} metric={metric} index={index} />)}</div> : <div className="report-empty-chart">暂无可用指标</div>}
+    {compact.trend.labels.length ? <AiTrendChart trend={compact.trend} compact /> : null}
+    <div className="report-insight-grid">
+      <section className="report-insight-block"><div className="report-section-title"><Check size={15} />做得好</div>{keyStrengths.length ? <div className="report-chip-list">{keyStrengths.map(item => <span className="report-chip" key={item}>{item}</span>)}</div> : <p className="report-empty-copy">暂无可确认的优势</p>}</section>
+      <section className="report-insight-block"><div className="report-section-title"><Lightbulb size={15} />下一步</div>{keySuggestions.length ? <div className="report-next-list">{keySuggestions.map((item, index) => <div className="report-next-item" key={`${item.title}-${index}`}><div className="row"><strong>{item.title}</strong>{item.priority === 'high' ? <CircleAlert size={14} /> : null}</div><p>{item.body}</p></div>)}</div> : <p className="report-empty-copy">暂无建议</p>}</section>
     </div>
-    <footer className="report-footer"><span>{report.dataNote}</span>{provider ? <span className="report-provider">{provider}</span> : null}</footer>
+    <footer className="report-footer"><span>{compact.dataNote || '暂无数据说明。'}</span>{provider ? <span className="report-provider">{provider}</span> : null}</footer>
+    {detailHref ? <Link to={detailHref} className="report-detail-link">阅读详细分析<ArrowUpRight size={16} /></Link> : null}
   </article>;
 }

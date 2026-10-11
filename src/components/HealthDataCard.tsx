@@ -33,15 +33,15 @@ export function HealthDataCard({ onImported }: HealthDataCardProps) {
   };
 
   return <section className="card health-data-card">
-    <div className="row-start">
+    <div className="row-start health-card-heading">
       <span className="list-leading" aria-hidden="true"><HeartPulse size={20} /></span>
       <div className="list-content">
         <h2 className="card-title">接入手机健康数据</h2>
-        <p className="card-copy">iOS 导入 Apple Health XML，安卓导入 Health Connect CSV / JSON。</p>
+        <p className="health-card-source">iOS XML · 安卓 CSV / JSON</p>
       </div>
+      <input ref={inputRef} className="visually-hidden" type="file" accept=".xml,.csv,.json,application/xml,text/csv,application/json" aria-hidden="true" tabIndex={-1} onChange={event => { const file = event.target.files?.[0]; if (file) void handleImport(file); }} />
+      <button className="icon-btn health-import-btn" type="button" disabled={busy} onClick={() => inputRef.current?.click()} aria-label={busy ? '导入健康数据中' : `导入${healthPlatformLabel()}`} title={busy ? '导入中' : `导入${healthPlatformLabel()}`}>{busy ? <LoaderCircle className="spin" size={19} /> : <Upload size={19} />}</button>
     </div>
-    <input ref={inputRef} className="visually-hidden" type="file" accept=".xml,.csv,.json,application/xml,text/csv,application/json" aria-hidden="true" tabIndex={-1} onChange={event => { const file = event.target.files?.[0]; if (file) void handleImport(file); }} />
-    <button className="icon-btn health-import-btn" type="button" disabled={busy} onClick={() => inputRef.current?.click()} aria-label={busy ? '导入健康数据中' : `导入${healthPlatformLabel()}`} title={busy ? '导入中' : `导入${healthPlatformLabel()}`}>{busy ? <LoaderCircle className="spin" size={19} /> : <Upload size={19} />}</button>
     {snapshot ? <div className="health-sync-summary">
       <div className="row"><span className="muted">最近同步</span><span className="eyebrow">{healthSourceLabel(snapshot.source)} · {formatImportedAt(snapshot.importedAt)}</span></div>
       <div className="health-sync-stats">
@@ -49,7 +49,7 @@ export function HealthDataCard({ onImported }: HealthDataCardProps) {
         {snapshot.latestWeightKg !== undefined ? <span><strong>{snapshot.latestWeightKg.toFixed(1)}</strong><small>kg 体重</small></span> : null}
         {snapshot.latestSteps !== undefined ? <span><strong>{Math.round(snapshot.latestSteps).toLocaleString('zh-CN')}</strong><small>步数</small></span> : null}
       </div>
-    </div> : <p className="health-hint">浏览器 PWA 不能直接读取系统 HealthKit / Health Connect，首次使用请从系统导出文件后导入。</p>}
+    </div> : <p className="health-hint">浏览器不能直读系统健康数据，首次使用请导入导出文件。</p>}
     {status ? <p className="health-status" role="status">{status}</p> : null}
   </section>;
 }

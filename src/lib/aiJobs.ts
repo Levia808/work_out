@@ -82,8 +82,8 @@ export function markAiJobInterrupted(id: string) {
  * still generating. The saved result and retry action remain available.
  */
 
-function buildPreviewTrainingAnalysis(): TrainingAnalysis {
-  const data = getTrainingAnalytics(7);
+function buildPreviewTrainingAnalysis(days = 7): TrainingAnalysis {
+  const data = getTrainingAnalytics(days);
   const clampPercent = (value: number | undefined) => value === undefined ? null : Math.max(0, Math.min(100, value));
   const sleepProgress = data.sleep.goalRate ?? null;
   const nutritionProgress = data.nutrition.calorieGoal && data.nutrition.avgKcal !== undefined
@@ -95,48 +95,80 @@ function buildPreviewTrainingAnalysis(): TrainingAnalysis {
     : null;
   const available = [data.training.completionRate, sleepProgress, nutritionProgress, habitProgress, bodyProgress].filter((value): value is number => value !== null && value !== undefined);
   const score = available.length ? Math.round(available.reduce((sum, value) => sum + value, 0) / available.length) : null;
-  return {
-    summary: `过去 ${data.period.days} 天，已记录 ${data.training.completedSessions} 次训练、${data.sleep.loggedDays} 天作息和 ${data.nutrition.loggedDays} 天饮食。`,
+  const metrics = [
+    { key: 'training' as const, label: '训练', value: data.training.completionRate ?? null, unit: '%', note: `${data.training.completedSessions}/${data.training.plannedSessions} 次已完成`, progress: clampPercent(data.training.completionRate) },
+    { key: 'sleep' as const, label: '睡眠', value: data.sleep.avgHours ?? null, unit: '小时', note: data.sleep.goalRate === undefined ? '暂无睡眠目标' : `达标 ${data.sleep.goalRate}%`, progress: sleepProgress },
+    { key: 'nutrition' as const, label: '饮食', value: data.nutrition.avgProtein ?? null, unit: 'g 蛋白质', note: data.nutrition.avgKcal === undefined ? '暂无热量记录' : `日均 ${Math.round(data.nutrition.avgKcal)} kcal`, progress: nutritionProgress },
+    { key: 'habits' as const, label: '习惯', value: data.habits.completionRate ?? null, unit: '%', note: `${data.habits.completedLogs} 条已完成记录`, progress: habitProgress },
+    { key: 'body' as const, label: '体测', value: data.body.latestWeightKg ?? null, unit: 'kg', note: data.body.latestBodyFatPercent === undefined ? '暂无体脂记录' : `体脂 ${data.body.latestBodyFatPercent}%`, progress: bodyProgress },
+  ];
+  const trend = { title: '区间完成度', unit: '%', labels: ['训练', '睡眠', '饮食', '习惯', '体测'], values: [data.training.completionRate ?? null, sleepProgress, nutritionProgress, habitProgress, bodyProgress] };
+  const suggestions = [
+    data.sleep.goalRate !== undefined && data.sleep.goalRate < 100 ? { title: '补齐睡眠目标', body: '继续记录入睡与起床时间，才能判断是否稳定达标。', basis: `当前睡眠达标率 ${data.sleep.goalRate}%。`, priority: 'medium' as const } : null,
+    data.training.completionRate !== undefined && data.training.completionRate < 100 ? { title: '按计划完成训练', body: '优先完成已安排的训练日，并在每组结束后保存重量与次数。', basis: `当前训练完成率 ${data.training.completionRate}%。`, priority: 'high' as const } : null,
+    !data.nutrition.loggedDays ? { title: '先补充饮食记录', body: '至少记录一天完整饮食后再判断热量与蛋白质趋势。', basis: '当前区间暂无饮食记录。', priority: 'low' as const } : null,
+  ].filter((item): item is TrainingAnalysis['compact']['suggestions'][number] => item !== null);
+  const compact = {
+    summary: `过去 ${data.period.days} 天，${data.training.completedSessions ? `完成 ${data.training.completedSessions} 次训练` : '暂无已完成训练'}，${data.sleep.loggedDays ? `记录 ${data.sleep.loggedDays} 天作息` : '暂无作息记录'}，${data.nutrition.loggedDays ? `记录 ${data.nutrition.loggedDays} 天饮食` : '暂无饮食记录'}。`,
     dataNote: '本卡片仅用于本地开发预览，数值来自当前浏览器中的演示记录；真实账号不会自动生成 AI 报告。',
     score: { value: score, label: '记录完成度', basis: '按当前区间内已有训练、睡眠、饮食、习惯与体测数据计算。' },
-    metrics: [
-      { key: 'training', label: '训练', value: data.training.completionRate ?? null, unit: '%', note: `${data.training.completedSessions}/${data.training.plannedSessions} 次已完成`, progress: clampPercent(data.training.completionRate) },
-      { key: 'sleep', label: '睡眠', value: data.sleep.avgHours ?? null, unit: '小时', note: data.sleep.goalRate === undefined ? '暂无睡眠目标' : `达标 ${data.sleep.goalRate}%`, progress: sleepProgress },
-      { key: 'nutrition', label: '饮食', value: data.nutrition.avgProtein ?? null, unit: 'g 蛋白质', note: data.nutrition.avgKcal === undefined ? '暂无热量记录' : `日均 ${Math.round(data.nutrition.avgKcal)} kcal`, progress: nutritionProgress },
-      { key: 'habits', label: '习惯', value: data.habits.completionRate ?? null, unit: '%', note: `${data.habits.completedLogs} 条已完成记录`, progress: habitProgress },
-      { key: 'body', label: '体测', value: data.body.latestWeightKg ?? null, unit: 'kg', note: data.body.latestBodyFatPercent === undefined ? '暂无体脂记录' : `体脂 ${data.body.latestBodyFatPercent}%`, progress: bodyProgress },
-    ],
-    trend: { title: '区间完成度', unit: '%', labels: ['训练', '睡眠', '饮食', '习惯', '体测'], values: [data.training.completionRate ?? null, sleepProgress, nutritionProgress, habitProgress, bodyProgress] },
+    metrics,
+    trend,
     strengths: [
       data.training.completedSessions ? `完成了 ${data.training.completedSessions} 次训练记录。` : '',
       data.sleep.loggedDays ? `已记录 ${data.sleep.loggedDays} 天作息。` : '',
       data.nutrition.loggedDays ? `已记录 ${data.nutrition.loggedDays} 天饮食。` : '',
     ].filter(Boolean),
-    suggestions: [
-      data.sleep.goalRate !== undefined && data.sleep.goalRate < 100 ? { title: '补齐睡眠目标', body: '继续记录入睡与起床时间，才能判断是否稳定达标。', basis: `当前睡眠达标率 ${data.sleep.goalRate}%。`, priority: 'medium' as const } : null,
-      data.training.completionRate !== undefined && data.training.completionRate < 100 ? { title: '按计划完成训练', body: '优先完成已安排的训练日，并在每组结束后保存重量与次数。', basis: `当前训练完成率 ${data.training.completionRate}%。`, priority: 'high' as const } : null,
-      !data.nutrition.loggedDays ? { title: '先补充饮食记录', body: '至少记录一天完整饮食后再判断热量与蛋白质趋势。', basis: '当前区间暂无饮食记录。', priority: 'low' as const } : null,
-    ].filter((item): item is TrainingAnalysis['suggestions'][number] => item !== null),
+    suggestions,
+  };
+  return {
+    compact,
+    detailed: {
+      overview: compact.summary,
+      coverage: {
+        period: `过去 ${data.period.days} 天（${data.period.start} 至 ${data.period.end}）`,
+        included: metrics.filter(item => item.value !== null).map(item => item.label),
+        missing: metrics.filter(item => item.value === null).map(item => item.label),
+      },
+      highlights: compact.strengths.map((detail, index) => ({ title: ['训练记录', '作息记录', '饮食记录'][index] ?? '记录亮点', detail, basis: '来自演示数据中已保存的记录。' })),
+      metricDetails: metrics.map(item => ({ key: item.key, title: item.label, value: item.value, unit: item.unit, interpretation: item.note, evidence: item.note, progress: item.progress })),
+      trends: [trend],
+      nextSteps: suggestions,
+      cautions: ['演示报告只用于验证界面与交互；真实报告仅使用用户当前已保存的数据。'],
+    },
   };
 }
 
-/** Seed one clearly marked report so the local demo can be visually verified without an API key. */
+/** Seed clearly marked reports so every report surface can be verified locally. */
 export function seedPreviewAiJob() {
-  if (!import.meta.env.DEV || !localStorage.getItem(PREVIEW_DATA_KEY) || getAiJobs().some(job => job.kind === 'training-analysis' && job.source === 'preview' && job.inputSummary === 'analysis:7')) return false;
-  const now = new Date().toISOString();
-  const job: AiJob<TrainingAnalysis> = {
-    id: makeId(),
-    kind: 'training-analysis',
-    provider: 'qwen',
-    createdAt: now,
-    updatedAt: now,
-    status: 'succeeded',
-    inputSummary: 'analysis:7',
-    result: buildPreviewTrainingAnalysis(),
-    retryable: false,
-    source: 'preview',
-  };
-  writeJobs([...getAiJobs(), job]);
+  if (!import.meta.env.DEV || !localStorage.getItem(PREVIEW_DATA_KEY)) return false;
+  const existing = getAiJobs();
+  const now = Date.now();
+  const samples: Array<{ inputSummary: string; days: number; ageDays: number; status?: AiJobStatus; error?: string }> = [
+    { inputSummary: 'analysis:1', days: 1, ageDays: 2 },
+    { inputSummary: 'analysis:7', days: 7, ageDays: 6 },
+    { inputSummary: 'analysis:28', days: 28, ageDays: 34 },
+    { inputSummary: 'analysis:14', days: 14, ageDays: 41, status: 'failed', error: '本地演示：用于验证失败状态与报告记录筛选。' },
+  ];
+  const missing = samples.filter(sample => !existing.some(job => job.kind === 'training-analysis' && job.source === 'preview' && job.inputSummary === sample.inputSummary));
+  if (!missing.length) return false;
+  const jobs: AiJob<TrainingAnalysis>[] = missing.map(sample => {
+    const timestamp = new Date(now - sample.ageDays * 24 * 60 * 60 * 1000).toISOString();
+    const status = sample.status ?? 'succeeded';
+    return {
+      id: makeId(),
+      kind: 'training-analysis',
+      provider: sample.ageDays % 2 ? 'qwen' : 'deepseek',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      status,
+      inputSummary: sample.inputSummary,
+      ...(status === 'succeeded' ? { result: buildPreviewTrainingAnalysis(sample.days) } : { error: sample.error }),
+      retryable: status !== 'succeeded',
+      source: 'preview',
+    };
+  });
+  writeJobs([...existing, ...jobs]);
   return true;
 }
 

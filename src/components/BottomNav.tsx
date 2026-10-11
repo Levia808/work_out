@@ -9,7 +9,9 @@ const nav = [
 ];
 
 function isNavActive(pathname: string, to: string) {
-  return to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`);
+  // The dock represents top-level destinations only. Detail screens keep the
+  // dock available without falsely claiming a parent tab is active.
+  return pathname === to;
 }
 
 export function BottomNav() {
@@ -17,8 +19,8 @@ export function BottomNav() {
   const activeIndex = nav.findIndex(({ to }) => isNavActive(location.pathname, to));
   return <nav className="bottom-nav" aria-label="主导航">
     <div className="bottom-nav-track">
-      <span className="nav-indicator" style={{ transform: `translateX(${Math.max(activeIndex, 0) * 100}%)` }} aria-hidden="true" />
-      {nav.map(({ to, label, Icon }) => <NavLink key={to} to={to} className={({ isActive }: { isActive: boolean }) => `nav-item ${isActive || isNavActive(location.pathname, to) ? 'active' : ''}`} aria-label={label} end={to === '/'}><Icon size={24} strokeWidth={2} /></NavLink>)}
+      {activeIndex >= 0 ? <span className="nav-indicator" style={{ transform: `translateX(${activeIndex * 100}%)` }} aria-hidden="true" /> : null}
+      {nav.map(({ to, label, Icon }) => <NavLink key={to} to={to} className={({ isActive }: { isActive: boolean }) => `nav-item ${isActive && isNavActive(location.pathname, to) ? 'active' : ''}`} aria-label={label} end><Icon size={24} strokeWidth={2} /></NavLink>)}
     </div>
   </nav>;
 }

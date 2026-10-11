@@ -12,9 +12,10 @@ type AppShellProps = {
 export function AppShell({ children, title, subtitle, actions = true, actionLink }: AppShellProps) {
   const location = useLocation();
   const isHome = location.pathname === '/';
+  const isSecondary = location.pathname !== '/' && (location.pathname.startsWith('/workouts/') || location.pathname.startsWith('/records/') || location.pathname === '/settings' || location.pathname.startsWith('/stats/'));
 
-  return <div className="fit-app">
-    <main className="fit-shell">
+  return <div className={`fit-app ${isSecondary ? 'fit-app-secondary' : ''}`}>
+    <main className={`fit-shell ${isSecondary ? 'fit-shell-secondary' : ''}`}>
       <header className="fit-header">
         <div>
           <h1 className="fit-title">{title}</h1>
