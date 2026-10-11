@@ -84,7 +84,7 @@ export function AiReportCard({ report, provider, detailHref }: AiReportCardProps
       <section className="report-insight-block"><div className="report-section-title"><Check size={15} />做得好</div>{keyStrengths.length ? <div className="report-chip-list">{keyStrengths.map(item => <span className="report-chip" key={item}>{item}</span>)}</div> : <p className="report-empty-copy">暂无可确认的优势</p>}</section>
       <section className="report-insight-block"><div className="report-section-title"><Lightbulb size={15} />下一步</div>{keySuggestions.length ? <div className="report-next-list">{keySuggestions.map((item, index) => <div className="report-next-item" key={`${item.title}-${index}`}><div className="row"><strong>{item.title}</strong>{item.priority === 'high' ? <CircleAlert size={14} /> : null}</div><p>{item.body}</p></div>)}</div> : <p className="report-empty-copy">暂无建议</p>}</section>
     </div>
-    <footer className="report-footer"><span>{compact.dataNote || '暂无数据说明。'}</span>{provider ? <span className="report-provider">{provider}</span> : null}</footer>
+    <footer className="report-footer"><span>数据范围：已保存记录</span>{provider ? <span className="report-provider">{provider}</span> : null}</footer>
     {detailHref ? <Link to={detailHref} className="report-detail-link">阅读详细分析<ArrowUpRight size={16} /></Link> : null}
   </article>;
 }
