@@ -33,16 +33,122 @@ function model(provider: AiProvider, multimodal = false) {
   return 'deepseek-flash';
 }
 function extractText(payload: unknown): string {
-  const value = payload as { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> };
+  const value = payload as { choices?: Array<{ message?: { content?: unknown } }> };
   const content = value.choices?.[0]?.message?.content;
-  if (Array.isArray(content)) return content.map(part => part.text ?? '').join('');
-  return content ?? '';
+  if (Array.isArray(content)) {
+    return content.map(part => {
+      if (typeof part === 'string') return part;
+      const item = part as { text?: unknown };
+      return typeof item.text === 'string' ? item.text : '';
+    }).join('');
+  }
+  if (typeof content === 'string') return content;
+  // A few OpenAI-compatible gateways return an already-decoded object even
+  // though the API type says `content` is a string. Keep that response
+  // parseable instead of turning it into "[object Object]".
+  return content && typeof content === 'object' ? JSON.stringify(content) : '';
 }
-function parseJson<T>(text: string): T {
-  const cleaned = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-  const start = cleaned.indexOf('{'); const end = cleaned.lastIndexOf('}');
-  if (start < 0 || end < start) throw new Error('AI 返回格式无法解析，请重试。');
-  return JSON.parse(cleaned.slice(start, end + 1)) as T;
+
+function stripCodeFence(text: string) {
+  return text.replace(/^\uFEFF/, '').trim()
+    .replace(/^```(?:json|JSON)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+/** Find balanced JSON values while respecting quoted strings and escapes. */
+function jsonCandidates(text: string): string[] {
+  const candidates: string[] = [];
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== '{' && text[start] !== '[') continue;
+    const opening = text[start];
+    const closing = opening === '{' ? '}' : ']';
+    const stack = [closing];
+    let quoted = false;
+    let escaped = false;
+    for (let index = start + 1; index < text.length; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') { quoted = true; continue; }
+      if (char === '{') stack.push('}');
+      else if (char === '[') stack.push(']');
+      else if (char === '}' || char === ']') {
+        if (stack[stack.length - 1] !== char) break;
+        stack.pop();
+        if (!stack.length) {
+          candidates.push(text.slice(start, index + 1));
+          break;
+        }
+      }
+    }
+  }
+  return candidates.sort((left, right) => right.length - left.length);
+}
+
+function removeJsonTrailingCommas(text: string) {
+  let result = '';
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quoted) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') { quoted = true; result += char; continue; }
+    if (char === ',' && /^[\s]*[}\]]/.test(text.slice(index + 1))) continue;
+    result += char;
+  }
+  return result;
+}
+
+function parseJsonCandidate(candidate: string): unknown {
+  const cleaned = removeJsonTrailingCommas(candidate.trim());
+  try { return JSON.parse(cleaned) as unknown; } catch {
+    // Some compatible models occasionally use JavaScript-style single quotes
+    // or unquoted keys despite being asked for JSON. Repair only the common,
+    // unambiguous forms and leave values containing apostrophes untouched.
+    const repaired = cleaned
+      .replace(/([{,]\s*)'([^'\n]+)'\s*:/g, '$1"$2":')
+      .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
+      .replace(/:\s*'([^'\n]*)'/g, ': "$1"');
+    return JSON.parse(repaired) as unknown;
+  }
+}
+
+/**
+ * Parse the JSON-like text returned by Qwen/DeepSeek gateways.
+ * Handles code fences, leading prose, nested objects, trailing commas and
+ * the occasional already-serialized JSON string. The result is still checked
+ * by each feature-specific normalizer afterwards.
+ */
+export function parseAiJson<T>(text: string): T {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('AI 没有返回内容，请重试。');
+  const cleaned = stripCodeFence(text);
+  const attempts = [cleaned, ...jsonCandidates(cleaned)];
+  const errors: string[] = [];
+  for (const candidate of attempts) {
+    try {
+      let parsed = parseJsonCandidate(candidate);
+      if (typeof parsed === 'string') parsed = parseJsonCandidate(parsed);
+      if (parsed && typeof parsed === 'object') return parsed as T;
+      errors.push('not-object');
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'invalid-json');
+    }
+  }
+  // Avoid exposing raw model output (which can contain personal data) in the
+  // UI error message or logs.
+  void errors;
+  throw new Error('AI 返回内容不是有效 JSON，请重试。');
 }
 async function callProvider(provider: AiProvider, apiKey: string, messages: unknown[], temperature = 0.2, multimodal = false) {
   if (!apiKey.trim()) throw new Error(`请先在设置中填写${provider === 'qwen' ? '千问' : 'DeepSeek'} API Key。`);
@@ -69,7 +175,7 @@ export async function analyzeMealPhoto(provider: AiProvider, apiKey: string, ima
     { type: 'text', text: '你是营养记录助手。识别这张餐食照片，严格只返回 JSON，不要 Markdown。字段：name（食物或餐食名称）、meal（breakfast/lunch/dinner/snack 之一）、kcal（整数）、protein（克数）、carbs（克数）、fat（克数）、notes（识别依据与不确定性，中文）、confidence（0 到 1）。看不清或无法估算时不要编造，返回合理估计并在 notes 标明需要确认。' },
     { type: 'image_url', image_url: { url: imageDataUrl } },
   ] }], 0.2, true);
-  const result = parseJson<MealAnalysis>(text);
+  const result = parseAiJson<MealAnalysis>(text);
   if (typeof result.name !== 'string' || !result.name.trim() || !Number.isFinite(result.kcal) || !Number.isFinite(result.protein) || !Number.isFinite(result.carbs) || !Number.isFinite(result.fat)) throw new Error('AI 没有返回完整营养数据，请重试或手动录入。');
   return { ...result, name: result.name.trim(), notes: typeof result.notes === 'string' ? result.notes.trim() : '', kcal: Math.max(0, Math.round(result.kcal)), protein: Math.max(0, Number(result.protein)), carbs: Math.max(0, Number(result.carbs)), fat: Math.max(0, Number(result.fat)), meal: ['breakfast', 'lunch', 'dinner', 'snack'].includes(result.meal) ? result.meal : 'snack' };
 }
@@ -79,7 +185,7 @@ export async function analyzeTrainingPlanImage(provider: AiProvider, apiKey: str
     { type: 'text', text: '你是 FitTrack 训练计划录入助手。读取这张训练计划截图或照片，只转录图片中明确可见的内容，不要凭空补全缺失动作、组数、次数或重量。严格只返回 JSON，不要 Markdown，结构为：{title: string, weekday: 0-6, weekMode: "every"|"odd"|"even", exercises: [{name: string, muscleGroup: string, instructions: string, todos: string[], targetSets: number, targetReps: number, targetWeightKg?: number}]}。weekday 按周日=0、周一=1 到周六=6；如果图片没有明确星期，使用 0 并在 title 或 instructions 中标注“星期未识别”；如果没有明确重复方式，使用 every；无法识别的文字用空字符串，不要猜测。todos 只填写图片中明确列出的检查项。' },
     { type: 'image_url', image_url: { url: imageDataUrl } },
   ] }], 0.1, true);
-  const raw = parseJson<WorkoutPlanImport>(text);
+  const raw = parseAiJson<WorkoutPlanImport>(text);
   if (!raw || typeof raw.title !== 'string' || !Array.isArray(raw.exercises)) throw new Error('AI 没有返回有效的训练计划 JSON。');
   const weekMode = raw.weekMode === 'odd' || raw.weekMode === 'even' ? raw.weekMode : 'every';
   const weekday = Number.isInteger(raw.weekday) && raw.weekday >= 0 && raw.weekday <= 6 ? raw.weekday : 0;
@@ -168,7 +274,7 @@ export async function analyzeTraining(provider: AiProvider, apiKey: string, data
     { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于这些已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须明确写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须使用以下结构：{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]}. score.value 与 metrics.progress 只有在数据足够时填写 0-100，否则为 null。trend.values 表示实际数据支持的 0-100 变化，不存在的数据用 null，labels 与 values 长度一致。每条 suggestions 必须引用真实数据维度作为 basis。dataNote 必须说明分析区间、覆盖的数据项和缺失项。' },
     { role: 'user', content: JSON.stringify(data) },
   ], 0.2);
-  const result = normalizeTrainingAnalysisValue(parseJson<unknown>(text));
+  const result = normalizeTrainingAnalysisValue(parseAiJson<unknown>(text));
   if (!result.summary || !result.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
   return result;
 }
