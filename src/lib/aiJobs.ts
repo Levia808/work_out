@@ -110,7 +110,7 @@ function buildPreviewTrainingAnalysis(days = 7): TrainingAnalysis {
   ].filter((item): item is TrainingAnalysis['compact']['suggestions'][number] => item !== null);
   const compact = {
     summary: `过去 ${data.period.days} 天，${data.training.completedSessions ? `完成 ${data.training.completedSessions} 次训练` : '暂无已完成训练'}，${data.sleep.loggedDays ? `记录 ${data.sleep.loggedDays} 天作息` : '暂无作息记录'}，${data.nutrition.loggedDays ? `记录 ${data.nutrition.loggedDays} 天饮食` : '暂无饮食记录'}。`,
-    dataNote: '本卡片仅用于本地开发预览，数值来自当前浏览器中的演示记录；真实账号不会自动生成 AI 报告。',
+    dataNote: '演示数据 · 仅用于本地验证；真实账号不会自动生成。',
     score: { value: score, label: '记录完成度', basis: '按当前区间内已有训练、睡眠、饮食、习惯与体测数据计算。' },
     metrics,
     trend,

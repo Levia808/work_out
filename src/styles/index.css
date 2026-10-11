@@ -1297,3 +1297,91 @@ canvas {
   .report-line-chart .chart-line,
   .report-line-chart .chart-point { animation: none; }
 }
+
+
+/* Stats home compact report: keep the AI summary visually flat and short.
+   The surrounding section already owns the surface, so avoid a second tall
+   rounded rectangle around generated copy. */
+.ai-analysis-shell .ai-report-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.ai-analysis-shell .report-summary {
+  max-height: 3.1em;
+  -webkit-line-clamp: 2;
+}
+.ai-analysis-shell .report-metric-tile {
+  min-height: 92px;
+  padding: 10px;
+  gap: 6px;
+}
+.ai-analysis-shell .report-metric-icon {
+  width: 24px;
+  height: 24px;
+}
+.ai-analysis-shell .report-metric-value {
+  font-size: clamp(1.28rem, 6.8vw, 1.62rem);
+}
+.ai-analysis-shell .report-metric-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.ai-analysis-shell .report-trend-chart {
+  height: 112px;
+}
+.ai-analysis-shell .report-insight-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ai-analysis-shell .report-insight-block {
+  padding: 10px;
+  border-radius: 13px;
+}
+.ai-analysis-shell .report-chip-list,
+.ai-analysis-shell .report-next-list {
+  margin-top: 8px;
+}
+.ai-analysis-shell .report-chip {
+  padding: 5px 7px;
+  font-size: .68rem;
+}
+.ai-analysis-shell .report-next-item {
+  padding: 7px 8px;
+}
+.ai-analysis-shell .report-next-item p {
+  -webkit-line-clamp: 2;
+  font-size: .68rem;
+}
+.ai-analysis-shell .report-footer {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.ai-analysis-shell .report-footer > span:first-child {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+@media (max-width: 390px) {
+  .ai-analysis-shell .report-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ai-analysis-shell .report-score-ring {
+    width: 70px;
+    height: 70px;
+  }
+  .ai-analysis-shell .report-score-center {
+    font-size: 1.1rem;
+  }
+  .ai-analysis-shell .report-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ai-analysis-shell .report-insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ai-analysis-shell .report-insight-block {
+    padding: 9px;
+  }
+}
