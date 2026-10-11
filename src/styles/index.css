@@ -1412,3 +1412,94 @@ canvas {
     padding: 9px;
   }
 }
+
+/* --- Global visual alignment pass: compact mobile composition without changing
+   product behavior. Keep the fixed dock legible while preserving the existing
+   monochrome surface language. --- */
+.bottom-nav {
+  background: rgba(22, 22, 24, .9);
+  border-color: rgba(255, 255, 255, .12);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .42);
+}
+
+.dashboard-page,
+.stats-page {
+  gap: 12px;
+}
+
+@media (max-width: 430px) {
+  .dashboard-page {
+    gap: 9px;
+  }
+
+  .dashboard-page .metric-card {
+    min-height: 132px;
+    padding: 15px;
+  }
+
+  .dashboard-page .metric-card-main {
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .dashboard-page .metric-card .progress-ring-small {
+    width: 58px;
+    height: 58px;
+  }
+
+  .dashboard-page .metric-card .progress-ring-small .progress-ring-value {
+    font-size: 1.08rem;
+  }
+
+  .dashboard-page .metric-card .big-number {
+    font-size: clamp(2rem, 10vw, 2.35rem);
+  }
+
+  .dashboard-page > .card:not(.card-muted) {
+    padding: 15px;
+  }
+
+  .stats-page {
+    gap: 10px;
+  }
+
+  .stats-page .stats-overview-grid,
+  .stats-page .stats-progress-grid {
+    gap: 8px;
+  }
+
+  .stats-page .stats-overview-grid .metric-card,
+  .stats-page .stats-progress-grid .card {
+    min-height: 136px;
+    padding: 15px;
+  }
+
+  .stats-page .stats-trend-card {
+    padding: 15px;
+  }
+
+  .stats-page .stats-trend-card .empty-chart {
+    min-height: 52px;
+  }
+
+  .stats-page .stats-progress-grid .big-number {
+    font-size: clamp(2.2rem, 11vw, 2.65rem);
+  }
+
+  .stats-page .ai-analysis-shell {
+    gap: 10px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 390px) {
+  .fit-header .icon-btn {
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  .dashboard-page .metric-card {
+    min-height: 128px;
+  }
+}

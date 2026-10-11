@@ -37,7 +37,7 @@ export function DashboardPage() {
   const firstHabit = habits[0];
 
   return <AppShell title="总览" actionLink={{ to: '/records', label: '添加记录' }}>
-    <div className="stack">
+    <div className="stack dashboard-page">
       <section className="card card-muted">
         {snapshot.todayPlan ? <>
           <div className="row">
