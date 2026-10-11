@@ -15,7 +15,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: #0a0a0a; over
 button, input, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
-#root { min-height: 100vh; }
+#root { min-height: 100vh; overflow-x: clip; }
 
 .fit-app { min-height: 100vh; background: #0a0a0a; color: #fff; }
 .fit-shell { width: 100%; max-width: 560px; min-height: 100vh; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left)) calc(98px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right)); }
@@ -94,7 +94,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .segmented-control { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 }
 
-.bottom-nav { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: min(560px, 100%); display: grid; grid-template-columns: repeat(4, 1fr); padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: rgba(10,10,10,.92); border-top: 1px solid rgba(255,255,255,.06); backdrop-filter: blur(20px); }
+.bottom-nav { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(4, 1fr); padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: rgba(10,10,10,.92); border-top: 1px solid rgba(255,255,255,.06); backdrop-filter: blur(20px); }
 .nav-item { min-height: 48px; display: grid; place-items: center; color: #3f3f46; border-radius: 16px; transition: color .15s ease, background .15s ease; }
 .nav-item.active { color: #fff; background: #161618; }
 .nav-item:active { background: #2a2a2e; }
@@ -173,6 +173,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .progress-ring-small { width: 74px; height: 74px; }
 .progress-ring-small .progress-ring-value { font-size: 1.35rem; }
+.progress-ring-empty .progress-ring-progress { opacity: 0; }
+.progress-ring-empty .progress-ring-value { color: #9a9aa0; font-size: 1.2rem; letter-spacing: 0; }
 
 .page-transition {
   min-height: 100vh;
@@ -1416,10 +1418,118 @@ canvas {
 /* --- Global visual alignment pass: compact mobile composition without changing
    product behavior. Keep the fixed dock legible while preserving the existing
    monochrome surface language. --- */
+:root {
+  color-scheme: dark;
+  --surface-card: #161618;
+  --surface-control: #2a2a2e;
+  --text-primary: #fff;
+  --text-secondary: #9a9aa0;
+  --text-muted: #64646d;
+  --line-soft: rgba(255, 255, 255, .08);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+
+.fit-shell {
+  width: min(100%, 560px);
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.fit-header {
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.card {
+  min-width: 0;
+  border-color: var(--line-soft);
+  background-color: var(--surface-card);
+}
+
+.card-title {
+  line-height: 1.24;
+}
+
+.card-copy,
+.list-meta,
+.fit-subtitle {
+  line-height: 1.45;
+}
+
+.eyebrow {
+  line-height: 1.3;
+}
+
+.input-field,
+.history-select-wrap select {
+  min-width: 0;
+  border-color: var(--line-soft);
+  background-color: var(--surface-control);
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.input-field:focus,
+.history-select-wrap select:focus-visible {
+  border-color: rgba(255, 255, 255, .42);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .06);
+}
+
+.primary-btn,
+.secondary-btn {
+  min-width: 44px;
+  line-height: 1.2;
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1), background-color .2s ease, border-color .2s ease, opacity .2s ease;
+}
+
+.primary-btn:active,
+.secondary-btn:active {
+  transform: scale(.985);
+}
+
+.secondary-btn:hover {
+  border-color: rgba(255, 255, 255, .16);
+  background-color: #333338;
+}
+
 .bottom-nav {
-  background: rgba(22, 22, 24, .9);
-  border-color: rgba(255, 255, 255, .12);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, .42);
+  background: rgba(22, 22, 24, .84);
+  border-color: rgba(255, 255, 255, .13);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .4);
+}
+
+.nav-item {
+  min-height: 48px;
+}
+
+.nav-item svg {
+  transition: transform .24s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+}
+
+.nav-item.active svg {
+  transform: scale(1.04);
+}
+
+.list-row {
+  line-height: 1.3;
+}
+
+.list-meta {
+  display: block;
+}
+
+button:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, .76);
+  outline-offset: 3px;
+}
+
+.bottom-nav {
+  background: rgba(22, 22, 24, .84);
 }
 
 .dashboard-page,
@@ -1428,6 +1538,15 @@ canvas {
 }
 
 @media (max-width: 430px) {
+  .fit-shell {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .fit-header {
+    margin-bottom: 16px;
+  }
+
   .dashboard-page {
     gap: 9px;
   }
@@ -1501,5 +1620,36 @@ canvas {
 
   .dashboard-page .metric-card {
     min-height: 128px;
+  }
+
+  /* Keep the form CTA clear of the resident dock on short phone viewports. */
+  .fit-shell-secondary .record-form-card {
+    gap: 10px;
+  }
+
+  .fit-shell-secondary .record-form-card .label {
+    gap: 5px;
+  }
+
+  .fit-shell-secondary .record-form-card .input-field {
+    height: 44px;
+  }
+
+  .fit-shell-secondary .record-form-card .primary-btn {
+    min-height: 46px;
+  }
+
+  .bottom-nav {
+    width: min(560px, calc(100% - 20px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-item svg,
+  .primary-btn,
+  .secondary-btn,
+  .input-field,
+  .history-select-wrap select {
+    transition: none;
   }
 }

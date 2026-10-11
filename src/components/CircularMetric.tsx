@@ -23,7 +23,7 @@ function useAnimatedProgress(value: number) {
   return animatedValue;
 }
 
-function Ring({ value, label, size = 'large' }: { value: number; label: string; size?: 'large' | 'small' }) {
+function Ring({ value, label, size = 'large', empty = false }: { value: number; label: string; size?: 'large' | 'small'; empty?: boolean }) {
   const normalized = Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
   const animatedValue = useAnimatedProgress(normalized);
   const radius = size === 'large' ? 45 : 34;
@@ -31,9 +31,9 @@ function Ring({ value, label, size = 'large' }: { value: number; label: string; 
   const center = view / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (animatedValue / 100) * circumference;
-  return <div className={`progress-ring ${size === 'small' ? 'progress-ring-small' : ''}`} style={{ width: view, height: view }} role="img" aria-label={`${label}${Math.round(normalized)}%`}>
+  return <div className={`progress-ring ${size === 'small' ? 'progress-ring-small' : ''} ${empty ? 'progress-ring-empty' : ''}`} style={{ width: view, height: view }} role="img" aria-label={empty ? `${label}暂无记录` : `${label}${Math.round(normalized)}%`}>
     <svg viewBox={`0 0 ${view} ${view}`} aria-hidden="true"><circle className="progress-ring-track" cx={center} cy={center} r={radius} /><circle className="progress-ring-progress" cx={center} cy={center} r={radius} strokeDasharray={circumference} strokeDashoffset={offset} /></svg>
-    <AnimatedNumber value={animatedValue} className="progress-ring-value" aria-hidden="true" />
+    {empty ? <span className="progress-ring-value" aria-hidden="true">—</span> : <AnimatedNumber value={animatedValue} className="progress-ring-value" aria-hidden="true" />}
   </div>;
 }
 
@@ -45,7 +45,7 @@ export function CircularMetric({ label, value, decimals = 0, unit, progress, ico
       <div className="row metric-card-head"><span className="eyebrow">{label}</span><Icon size={19} className="metric-icon" aria-hidden="true" /></div>
       <div className="metric-card-main">
         <div className="metric-value-wrap"><div className="metric-value">{value === undefined ? <span className="big-number empty-number">--</span> : <AnimatedNumber value={value} decimals={decimals} className="big-number" />}{unit ? <span className="unit">{unit}</span> : null}</div><p className="card-copy">{helper ?? `${Math.round(normalized)}% 已完成`}</p></div>
-        <Ring value={normalized} label={`${label}进度`} size="small" />
+        <Ring value={normalized} label={`${label}进度`} size="small" empty={value === undefined} />
       </div>
     </article>
   );
