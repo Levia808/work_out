@@ -79,30 +79,66 @@ function textFromContent(content: unknown): string {
   }).join('');
 }
 
-function extractText(payload: unknown): string {
+type AiResponseChoice = {
+  text?: unknown;
+  delta?: { content?: unknown; text?: unknown };
+  message?: {
+    content?: unknown;
+    reasoning_content?: unknown;
+    output_text?: unknown;
+    tool_calls?: Array<{ function?: { arguments?: unknown } }>;
+  };
+};
+
+/**
+ * Read the text-like payloads used by OpenAI-compatible chat and responses
+ * gateways. Providers do not all agree on whether JSON is returned in
+ * message.content, output_text, a tool call, or an array of content parts.
+ * Keeping this tolerant prevents a successful HTTP response from becoming
+ * the misleading “AI 没有返回内容” error.
+ */
+export function extractAiText(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const value = payload as {
-    choices?: Array<{
-      text?: unknown;
-      delta?: { content?: unknown };
-      message?: { content?: unknown; reasoning_content?: unknown; output_text?: unknown };
-    }>;
+    choices?: AiResponseChoice[];
     output_text?: unknown;
-    output?: Array<{ content?: unknown; text?: unknown }>;
+    output?: unknown;
+    response?: { output_text?: unknown; output?: unknown };
   };
-  const choice = value.choices?.[0];
-  const candidates = [
-    choice?.message?.content,
-    choice?.message?.output_text,
-    choice?.text,
-    choice?.delta?.content,
-    value.output_text,
-    ...(value.output ?? []).flatMap(item => [item.content, item.text]),
-    // Reasoning models can occasionally put the final JSON in this field
-    // when the normal content field is empty. It is parsed by parseAiJson,
-    // which safely extracts the JSON portion from any surrounding reasoning.
-    choice?.message?.reasoning_content,
-  ];
+  const choices = Array.isArray(value.choices) ? value.choices : [];
+  const candidates: unknown[] = [];
+  choices.forEach(choice => {
+    candidates.push(
+      choice.message?.content,
+      choice.message?.output_text,
+      choice.text,
+      choice.delta?.content,
+      choice.delta?.text,
+      ...(choice.message?.tool_calls ?? []).map(call => call.function?.arguments),
+      // Reasoning models can occasionally put the final JSON in this field
+      // when the normal content field is empty. parseAiJson safely extracts
+      // the JSON portion from any surrounding reasoning.
+      choice.message?.reasoning_content,
+    );
+  });
+  candidates.push(value.output_text, value.response?.output_text);
+
+  const collectOutput = (output: unknown) => {
+    if (!Array.isArray(output)) return;
+    output.forEach(item => {
+      if (typeof item === 'string') candidates.push(item);
+      else if (item && typeof item === 'object') {
+        const record = item as { content?: unknown; text?: unknown; output_text?: unknown; arguments?: unknown; type?: unknown };
+        candidates.push(record.output_text, record.content, record.text, record.arguments);
+        if (Array.isArray(record.content)) {
+          record.content.forEach(part => candidates.push(part));
+        }
+      }
+    });
+  };
+  collectOutput(value.output);
+  collectOutput(value.response?.output);
+
   for (const candidate of candidates) {
     const text = textFromContent(candidate);
     if (text.trim()) return text;
@@ -240,7 +276,7 @@ async function callProvider(provider: AiProvider, apiKey: string, messages: unkn
     let response = await request(true);
     let payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
-    let text = extractText(payload);
+    let text = extractAiText(payload);
     // Some OpenAI-compatible gateways return HTTP 200 but omit message.content
     // when JSON mode is enabled. Retry once without that optional parameter;
     // the prompt still requires JSON and the same parser validates the result.
@@ -248,7 +284,7 @@ async function callProvider(provider: AiProvider, apiKey: string, messages: unkn
       response = await request(false);
       payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
       if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
-      text = extractText(payload);
+      text = extractAiText(payload);
     }
     return text;
   } catch (error) {
@@ -296,8 +332,19 @@ function nullableNumber(value: unknown, min = Number.NEGATIVE_INFINITY, max = Nu
 
 const metricKeys: TrainingMetricKey[] = ['training', 'sleep', 'nutrition', 'habits', 'body'];
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-const textValue = (value: unknown) => typeof value === 'string' ? value.trim() : '';
-const textList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
+
+/** Remove debug-like analytics paths from old model responses before rendering saved reports. */
+function cleanModelText(value: unknown) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  const debugStart = text.search(/\b(?:training|sleep|nutrition|body|habits|goals|period)\.[A-Za-z_$][\w$]*\s*[:=]/i);
+  return (debugStart >= 0 ? text.slice(0, debugStart) : text)
+    .replace(/[\s,，;；:：|｜-]+$/g, '')
+    .trim();
+}
+
+const textValue = cleanModelText;
+const textList = (value: unknown) => Array.isArray(value) ? value.map(cleanModelText).filter(Boolean) : [];
 
 function normalizeMetricKey(value: unknown): TrainingMetricKey | null {
   return metricKeys.includes(value as TrainingMetricKey) ? value as TrainingMetricKey : null;
@@ -306,7 +353,9 @@ function normalizeMetricKey(value: unknown): TrainingMetricKey | null {
 function normalizeTrend(input: unknown, fallbackTitle = '趋势'): TrainingAnalysisTrend {
   const raw = isRecord(input) ? input : {};
   const labels = Array.isArray(raw.labels) ? raw.labels.map(textValue) : [];
-  const values = Array.isArray(raw.values) ? raw.values.map(value => nullableNumber(value, 0, 100)) : [];
+  // Trends may represent measurements (kg, kcal, hours), not only scores.
+  // Keep any finite value; progress/score fields remain range-validated.
+  const values = Array.isArray(raw.values) ? raw.values.map(value => nullableNumber(value)) : [];
   return {
     title: textValue(raw.title) || fallbackTitle,
     unit: textValue(raw.unit) || '%',
@@ -317,7 +366,7 @@ function normalizeTrend(input: unknown, fallbackTitle = '趋势'): TrainingAnaly
 
 function normalizeSuggestions(input: unknown): TrainingSuggestion[] {
   if (!Array.isArray(input)) return [];
-  return input.map(item => {
+  const suggestions = input.map(item => {
     if (typeof item === 'string') return { title: '建议', body: item.trim(), basis: '', priority: 'medium' as const };
     const value = isRecord(item) ? item : {};
     const priority: TrainingSuggestion['priority'] = value.priority === 'high' || value.priority === 'low' ? value.priority : 'medium';
@@ -328,6 +377,8 @@ function normalizeSuggestions(input: unknown): TrainingSuggestion[] {
       priority,
     };
   }).filter(item => item.body);
+  const priorityOrder: Record<TrainingSuggestion['priority'], number> = { high: 0, medium: 1, low: 2 };
+  return suggestions.sort((left, right) => priorityOrder[left.priority] - priorityOrder[right.priority]);
 }
 
 function normalizeMetrics(input: unknown): TrainingAnalysisMetric[] {
@@ -381,7 +432,7 @@ function defaultDetailed(compact: TrainingAnalysisCompact): TrainingAnalysisDeta
       value: metric.value,
       unit: metric.unit,
       interpretation: metric.note || '暂无可确认的解读。',
-      evidence: metric.note || '暂无可确认的证据。',
+      evidence: '',
       progress: metric.progress,
     })),
     trends: compact.trend.labels.length ? [compact.trend] : [],
@@ -415,6 +466,9 @@ function normalizeDetailed(input: unknown, compact: TrainingAnalysisCompact): Tr
       progress: nullableNumber(value.progress, 0, 100),
     };
   }).filter((item, index, list) => item.title && list.findIndex(candidate => candidate.key === item.key) === index) : [];
+  metricDetails.forEach(item => {
+    if (item.evidence && item.evidence === item.interpretation) item.evidence = '';
+  });
   const trends = Array.isArray(raw.trends) ? raw.trends.map((item, index) => normalizeTrend(item, `趋势 ${index + 1}`)).filter(item => item.labels.length) : [];
   const nextSteps = normalizeSuggestions(raw.nextSteps);
   const normalized: TrainingAnalysisDetail = {
@@ -456,7 +510,7 @@ export function normalizeTrainingAnalysis(input: unknown): TrainingAnalysis {
 
 export async function analyzeTraining(provider: AiProvider, apiKey: string, data: TrainingAnalytics): Promise<TrainingAnalysis> {
   const text = await callProvider(provider, apiKey, [
-    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须同时返回 compact（适合统计首页的精简版）和 detailed（适合二级页面的详细版），结构如下：{compact:{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]},detailed:{overview:string,coverage:{period:string,included:string[],missing:string[]},highlights:[{title:string,detail:string,basis:string,metricKey?:"training"|"sleep"|"nutrition"|"habits"|"body"}],metricDetails:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",title:string,value:number|null,unit:string,interpretation:string,evidence:string,progress:number|null}],trends:[{title:string,unit:string,labels:string[],values:(number|null)[]}],nextSteps:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}],cautions:string[]}}。score.value、metrics.progress 和 metricDetails.progress 只有数据足够时填写 0-100，否则为 null。所有 trend 的 labels 与 values 长度一致，不存在的数据用 null。每条建议和证据必须引用真实数据维度；不要输出任何未在输入中出现的数值。' },
+    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须同时返回 compact（适合统计首页的精简版）和 detailed（适合二级页面的详细版），结构如下：{compact:{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]},detailed:{overview:string,coverage:{period:string,included:string[],missing:string[]},highlights:[{title:string,detail:string,basis:string,metricKey?:"training"|"sleep"|"nutrition"|"habits"|"body"}],metricDetails:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",title:string,value:number|null,unit:string,interpretation:string,evidence:string,progress:number|null}],trends:[{title:string,unit:string,labels:string[],values:(number|null)[]}],nextSteps:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}],cautions:string[]}}。score.value、metrics.progress 和 metricDetails.progress 只有数据足够时填写 0-100，否则为 null。所有 trend 的 labels 与 values 长度一致，不存在的数据用 null。compact.summary 限 1–2 句；compact.suggestions 最多 2 条，正文简洁且明确可执行。所有给用户看的文字必须是自然中文，禁止输出内部字段名、变量路径、调试信息或 key=value（例如 training.completedSessions=2）。evidence 与 interpretation 不得重复。每条建议和证据必须引用真实数据维度；不要输出任何未在输入中出现的数值。' },
     { role: 'user', content: JSON.stringify(data) },
   ], 0.2);
   const result = normalizeTrainingAnalysis(parseAiJson<unknown>(text));

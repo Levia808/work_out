@@ -7,13 +7,25 @@ const keys = {
   settings: 'settings', plans: 'workout-plans', sessions: 'workout-sessions', meals: 'meal-logs', sleep: 'sleep-logs', body: 'body-metrics', habits: 'habits', habitLogs: 'habit-logs',
 } as const;
 
+/** Development fixtures live in a separate namespace so demo mode never
+ * seeds or mutates a user's real local records. */
+export function isPreviewMode() {
+  return import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('demo') === '1';
+}
+
+function storageKey(key: string) {
+  return `${PREFIX}${isPreviewMode() ? 'demo:' : ''}${key}`;
+}
+
 function read<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(`${PREFIX}${key}`);
+    const raw = localStorage.getItem(storageKey(key));
     return raw ? JSON.parse(raw) as T : fallback;
   } catch { return fallback; }
 }
-function write<T>(key: string, value: T) { localStorage.setItem(`${PREFIX}${key}`, JSON.stringify(value)); window.dispatchEvent(new CustomEvent('fittrack:data')); }
+function write<T>(key: string, value: T) { localStorage.setItem(storageKey(key), JSON.stringify(value)); window.dispatchEvent(new CustomEvent('fittrack:data')); }
 export function makeId() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 export const dateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
 export const formatWeekday = (weekday: number) => ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][weekday] ?? '未设置';
@@ -223,11 +235,11 @@ export function getTrainingRate(days = 28) {
 }
 
 export function seedPreviewData() {
-  if (!import.meta.env.DEV) return false;
-  const previewKey = `${PREFIX}preview-seeded`;
+  if (!isPreviewMode()) return false;
+  const previewKey = storageKey('preview-seeded');
   if (localStorage.getItem(previewKey)) return false;
-  const hasUserData = [keys.settings, keys.plans, keys.sessions, keys.meals, keys.sleep, keys.body, keys.habits, keys.habitLogs].some(key => localStorage.getItem(`${PREFIX}${key}`));
-  if (hasUserData) return false;
+  const hasDataInNamespace = [keys.settings, keys.plans, keys.sessions, keys.meals, keys.sleep, keys.body, keys.habits, keys.habitLogs].some(key => localStorage.getItem(storageKey(key)));
+  if (hasDataInNamespace) return false;
 
   const now = new Date();
   const today = dateKey(now);

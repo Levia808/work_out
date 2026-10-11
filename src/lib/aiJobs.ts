@@ -1,6 +1,6 @@
 import type { AiProvider } from './types';
 import type { TrainingAnalysis } from './ai';
-import { getTrainingAnalytics, makeId } from './localData';
+import { getTrainingAnalytics, isPreviewMode, makeId } from './localData';
 
 export type AiJobKind = 'meal-photo' | 'workout-plan-image' | 'training-analysis';
 export type AiJobStatus = 'reading' | 'uploading' | 'submitting' | 'generating' | 'succeeded' | 'failed' | 'interrupted';
@@ -21,11 +21,15 @@ export type AiJob<T = unknown> = {
 };
 
 const STORAGE_KEY = 'fittrack:ai-jobs';
-const PREVIEW_DATA_KEY = 'fittrack:preview-seeded';
+const PREVIEW_DATA_KEY = 'fittrack:demo:preview-seeded';
+
+function jobsStorageKey() {
+  return isPreviewMode() ? 'fittrack:demo:ai-jobs' : STORAGE_KEY;
+}
 
 function readJobs(): AiJob[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(jobsStorageKey());
     return raw ? JSON.parse(raw) as AiJob[] : [];
   } catch {
     return [];
@@ -35,7 +39,7 @@ function readJobs(): AiJob[] {
 function writeJobs(jobs: AiJob[]) {
   // Keep every generated report so users can compare changes over time.
   // The payload is structured JSON and each job has a stable id.
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  localStorage.setItem(jobsStorageKey(), JSON.stringify(jobs));
   window.dispatchEvent(new CustomEvent('fittrack:ai-jobs'));
 }
 
@@ -141,13 +145,18 @@ function buildPreviewTrainingAnalysis(days = 7): TrainingAnalysis {
 
 /** Seed clearly marked reports so every report surface can be verified locally. */
 export function seedPreviewAiJob() {
-  if (!import.meta.env.DEV || !localStorage.getItem(PREVIEW_DATA_KEY)) return false;
+  if (!isPreviewMode() || !localStorage.getItem(PREVIEW_DATA_KEY)) return false;
   const existing = getAiJobs();
   const now = Date.now();
   const samples: Array<{ inputSummary: string; days: number; ageDays: number; status?: AiJobStatus; error?: string }> = [
     { inputSummary: 'analysis:1', days: 1, ageDays: 2 },
+    { inputSummary: 'analysis:3', days: 3, ageDays: 13 },
     { inputSummary: 'analysis:7', days: 7, ageDays: 6 },
+    { inputSummary: 'analysis:21', days: 21, ageDays: 38 },
     { inputSummary: 'analysis:28', days: 28, ageDays: 34 },
+    { inputSummary: 'analysis:30', days: 30, ageDays: 68, status: 'interrupted', error: '本地演示：用于验证离开页面后恢复为可重试状态。' },
+    { inputSummary: 'analysis:60', days: 60, ageDays: 95 },
+    { inputSummary: 'analysis:90', days: 90, ageDays: 160, status: 'failed', error: '本地演示：用于验证失败状态与报告记录筛选。' },
     { inputSummary: 'analysis:14', days: 14, ageDays: 41, status: 'failed', error: '本地演示：用于验证失败状态与报告记录筛选。' },
   ];
   const missing = samples.filter(sample => !existing.some(job => job.kind === 'training-analysis' && job.source === 'preview' && job.inputSummary === sample.inputSummary));

@@ -8,7 +8,7 @@ import { ReasoningText } from '../components/ReasoningText';
 import { TrendBadge } from '../components/CircularMetric';
 import { analyzeTraining, getAnalysisProvider, normalizeTrainingAnalysis, type TrainingAnalysis } from '../lib/ai';
 import { createAiJob, getAiJobs, markAiJobInterrupted, updateAiJob, type AiJob } from '../lib/aiJobs';
-import { getBodyMetrics, getSettings, getTrainingAnalytics, getTrainingRate } from '../lib/localData';
+import { getBodyMetrics, getSettings, getTrainingAnalytics, getTrainingRate, isPreviewMode } from '../lib/localData';
 
 type AnalysisMode = { key: 'day' | 'week' | 'ongoing'; label: string; days: number };
 const analysisModes: AnalysisMode[] = [
@@ -38,6 +38,7 @@ export function StatsPage() {
   const [analysisError, setAnalysisError] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const analysisInput = `analysis:${analysisModes.find(item => item.key === analysisMode)?.days ?? 7}`;
+  const previewMode = isPreviewMode();
 
   useEffect(() => {
     const sync = () => setVersion(value => value + 1);
@@ -56,10 +57,10 @@ export function StatsPage() {
     };
   }, []);
 
-  const analysisJobs = useMemo(() => getAiJobs().filter(job => job.kind === 'training-analysis').map(job => ({
+  const analysisJobs = useMemo(() => getAiJobs().filter(job => job.kind === 'training-analysis' && (previewMode || job.source !== 'preview')).map(job => ({
     ...job,
     result: job.result ? normalizeTrainingAnalysis(job.result) : undefined,
-  })) as AiJob<TrainingAnalysis>[], [version]);
+  })) as AiJob<TrainingAnalysis>[], [previewMode, version]);
   const modeJob = analysisJobs.find(job => job.inputSummary === analysisInput);
   const focusedReport = modeJob?.status === 'succeeded' && modeJob.result ? modeJob.result : undefined;
   const metrics = useMemo(() => getBodyMetrics().filter(item => item.weightKg !== undefined || item.bodyFatPercent !== undefined), [version]);
@@ -136,10 +137,10 @@ export function StatsPage() {
         {modeJob ? <div className={`ai-job-status is-${modeJob.status}`}><span>{statusLabel(modeJob.status)}</span><span className="muted">{new Date(modeJob.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div> : null}
         {analysisError || modeJob?.status === 'failed' ? <p className="form-error" role="alert">{analysisError || modeJob?.error}</p> : null}
         {modeJob?.status === 'interrupted' ? <p className="health-hint">本次请求未能在浏览器关闭前完成，状态已保存；重新生成会创建一条新的报告记录。</p> : null}
-        {focusedReport ? <AiReportCard report={focusedReport} provider={providerLabel(modeJob!)} detailHref={`/stats/report/${modeJob!.id}`} /> : <div className="ai-empty-state"><Sparkles size={18} /><span>暂无此范围的可用分析，生成后会在这里显示。</span></div>}
+        {focusedReport ? <AiReportCard report={focusedReport} provider={providerLabel(modeJob!)} detailHref={`/stats/report/${modeJob!.id}${modeJob!.source === 'preview' ? '?demo=1' : ''}`} /> : <div className="ai-empty-state"><Sparkles size={18} /><span>暂无此范围的可用分析，生成后会在这里显示。</span></div>}
       </section>
 
-      <Link to="/stats/history" className="card report-history-entry"><div className="report-history-icon"><CalendarDays size={18} /></div><div className="report-history-copy"><strong>报告记录</strong><span>{analysisJobs.length ? `${analysisJobs.length} 份报告 · 最近 ${reportMonth}` : '查看已生成的报告'}</span></div><ChevronRight size={18} className="muted" /></Link>
+      <Link to={`/stats/history${previewMode ? '?demo=1' : ''}`} className="card report-history-entry"><div className="report-history-icon"><CalendarDays size={18} /></div><div className="report-history-copy"><strong>报告记录</strong><span>{analysisJobs.length ? `${analysisJobs.length} 份报告 · 最近 ${reportMonth}` : '查看已生成的报告'}</span></div><ChevronRight size={18} className="muted" /></Link>
     </div>
   </AppShell>;
 }

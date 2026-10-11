@@ -30,7 +30,7 @@ function DetailMetric({ metric, index }: { metric: TrainingAnalysisMetricDetail;
     <div className="row detail-metric-title"><span className="report-metric-icon"><Icon size={16} /></span><strong>{metric.title}</strong></div>
     <div className="detail-metric-value">{metricValue(metric)}</div>
     <p>{metric.interpretation || '暂无可确认的解读。'}</p>
-    <span className="detail-metric-evidence">{metric.evidence || '暂无可确认的证据。'}</span>
+    {metric.evidence && metric.evidence !== metric.interpretation ? <span className="detail-metric-evidence">{metric.evidence}</span> : null}
     {metric.progress !== null ? <div className="report-meter" aria-label={`${metric.title} ${Math.round(metric.progress)}%`}><span style={{ width: `${metric.progress}%` }} /></div> : null}
   </article>;
 }
