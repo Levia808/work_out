@@ -1,5 +1,6 @@
 import { format, getWeek, subDays } from 'date-fns';
 import type { BodyMetric, FoodLog, Habit, HabitLog, MealType, SleepLog, UserSettings, WeekMode, WorkoutPlan, WorkoutPlanImport, WorkoutSession, WorkoutSet } from './types';
+import { enrichImportedExercise } from './exerciseCatalog';
 
 const PREFIX = 'fittrack:';
 const keys = {
@@ -42,14 +43,15 @@ export function deletePlan(id: string) { write(keys.plans, getPlans().filter(pla
 
 export function createPlanFromImport(input: WorkoutPlanImport): WorkoutPlan {
   const now = new Date().toISOString();
-  const exercises = input.exercises.map(item => ({
+  const importedExercises = input.exercises.map(enrichImportedExercise);
+  const exercises = importedExercises.map(item => ({
     id: makeId(),
     name: item.name.trim(),
     muscleGroup: item.muscleGroup?.trim() ?? '',
     instructions: item.instructions?.trim() ?? '',
     todos: (item.todos ?? []).map(label => ({ id: makeId(), label: label.trim(), completed: false })).filter(todo => todo.label),
   }));
-  const items = input.exercises.map((item, index) => ({
+  const items = importedExercises.map((item, index) => ({
     id: makeId(),
     exerciseId: exercises[index].id,
     sortOrder: index,

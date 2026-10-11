@@ -889,3 +889,113 @@ canvas {
   .bottom-nav { padding-top: 8px; }
   .nav-item { min-height: 44px; }
 }
+
+/* Training detail polish: HeroUI controls keep their circular hit area stable even
+   when a flex row becomes narrow. The visual token lives here, while the primitive
+   itself comes from @heroui/react. */
+.icon-btn,
+.set-complete-btn,
+.set-save-btn {
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
+  min-width: 44px;
+  min-height: 44px;
+  height: auto;
+  padding: 0;
+  line-height: 1;
+}
+.icon-btn { width: 52px; }
+.set-complete-btn { width: 48px; min-width: 48px; min-height: 48px; color: #0a0a0a; background: #fff; border: 0; }
+.set-complete-btn.is-complete { color: #fff; background: #55555c; }
+.set-save-btn { width: 44px; min-width: 44px; color: #d2d2d6; background: #2a2a2e; border: 1px solid rgba(255,255,255,.08); }
+.set-save-btn:hover { color: #fff; background: #3a3a3f; }
+
+.exercise-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 14px;
+  color: #fff;
+  background: #2a2a2e;
+}
+.exercise-hero-card { display: grid; gap: 18px; }
+.exercise-hero-heading,
+.exercise-session-heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.exercise-hero-heading > div,
+.exercise-session-heading .list-content { min-width: 0; }
+.exercise-session-cue { margin: 7px 0 0; color: #d2d2d6; font-size: .78rem; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.exercise-target-row { display: flex; align-items: end; justify-content: space-between; gap: 16px; min-width: 0; }
+.exercise-target-mark { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 17px; color: #fff; background: #2a2a2e; }
+
+.todo-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 15px;
+  color: #fff;
+  background: #1b1b1f;
+  cursor: pointer;
+  transition: color .22s ease, background-color .22s ease, opacity .22s ease;
+}
+.todo-row input { width: 18px; height: 18px; accent-color: #fff; }
+.todo-row span { min-width: 0; overflow-wrap: anywhere; font-size: .84rem; line-height: 1.35; }
+.todo-row > svg { opacity: 0; color: #0a0a0a; transition: opacity .22s ease; }
+.todo-row.is-done { color: #a4a4aa; background: #2a2a2e; }
+.todo-row.is-done > svg { opacity: 1; color: #fff; }
+.todo-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.todo-add .icon-btn { width: 48px; }
+
+.workout-session-page { min-width: 0; }
+.exercise-session-card { display: grid; gap: 16px; }
+.session-set-list { display: grid; gap: 10px; min-width: 0; }
+.set-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 19px;
+  background: #1b1b1f;
+  transition: background-color .28s ease, border-color .28s ease, color .28s ease, filter .28s ease;
+}
+.set-card.is-complete { color: #bcbcc1; background: #2a2a2e; border-color: rgba(255,255,255,.04); }
+.set-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.set-card-header > div { display: grid; gap: 4px; min-width: 0; }
+.set-card-header strong { font-size: .96rem; font-weight: 800; }
+.set-card-target { color: #9a9aa0; font-size: .74rem; line-height: 1.25; }
+.set-card-divider { height: 1px; background: rgba(255,255,255,.08); }
+.set-card-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; min-width: 0; }
+.set-field { min-width: 0; }
+.set-field > span { color: #9a9aa0; font-size: .72rem; }
+.set-card-message { min-height: 1.3em; overflow: hidden; color: #9a9aa0; font-size: .76rem; line-height: 1.3; }
+.set-card.is-complete .set-card-message { color: #fff; }
+.set-card.is-complete .input-field { color: #d2d2d6; background: #34343a; }
+.set-card-error { margin: -3px 0 0; color: #fff; font-size: .73rem; line-height: 1.35; overflow-wrap: anywhere; }
+.set-complete-btn { transition: background-color .28s ease, color .28s ease, transform .18s ease !important; }
+
+@media (max-width: 360px) {
+  .set-card { padding: 12px; border-radius: 17px; }
+  .set-card-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .set-save-btn { grid-column: 1 / -1; justify-self: end; }
+  .exercise-target-row { align-items: center; }
+  .exercise-target-mark { width: 48px; height: 48px; flex-basis: 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .todo-row,
+  .set-card,
+  .set-card-message,
+  .set-complete-btn,
+  .set-save-btn { transition: none; }
+}
+
+/* HeroUI's radius prop is semantic; keep the hit area round even when the
+   project-wide button reset or Tailwind order changes. */
+.icon-btn,
+.set-complete-btn,
+.set-save-btn { border-radius: 999px !important; }
