@@ -1,5 +1,6 @@
 import { format, getWeek, subDays } from 'date-fns';
 import type { BodyMetric, FoodLog, Habit, HabitLog, MealType, SleepLog, UserSettings, WeekMode, WorkoutPlan, WorkoutPlanImport, WorkoutSession, WorkoutSet } from './types';
+import { estimateBodyComposition, type BodyCompositionEstimate } from './calculations';
 import { enrichImportedExercise } from './exerciseCatalog';
 
 const PREFIX = 'fittrack:';
@@ -143,6 +144,8 @@ export type TrainingAnalytics = {
     /** Exact user-entered measurement points; AI-generated points are never rendered. */
     weightSeries: Array<{ date: string; value: number }>;
     bodyFatSeries: Array<{ date: string; value: number }>;
+    latestComposition?: (BodyCompositionEstimate & { measuredOn: string; measuredBodyFatPercent?: number; measuredWeightKg?: number; measuredWaistCm?: number; waistMeasurementSite?: BodyMetric['waistMeasurementSite'] }) | null;
+    compositionProfile?: { heightCm?: number; ageYears?: number; formulaSex?: 'male' | 'female' };
   };
   habits: { habitCount: number; completedLogs: number; loggedEntries?: number; loggingCoverageRate?: number; checkInCompletionRate?: number; currentStreaks: Array<{ name: string; days: number }> };
   goals: { calorieGoal?: number; sleepGoalHours?: number; targetWeightKg?: number };
@@ -154,7 +157,7 @@ export type TrainingAnalytics = {
     sessions: Array<{ planTitle: string; completed: boolean; durationMinutes?: number; sets: Array<{ exercise: string; setNumber: number; weightKg: number; reps: number; completed: boolean }> }>;
     meals: Array<{ meal: MealType; name: string; grams?: number; kcal: number; protein: number; carbs: number; fat: number; source?: FoodLog['source']; notes?: string }>;
     sleep: null | { fellAsleepAt: string; wokeAt: string; durationMinutes: number; quality?: number };
-    body: null | { weightKg?: number; bodyFatPercent?: number; waistCm?: number; notes?: string };
+    body: null | { weightKg?: number; bodyFatPercent?: number; waistCm?: number; waistMeasurementSite?: BodyMetric['waistMeasurementSite']; notes?: string };
     habits: Array<{ name: string; logged: boolean; completed: boolean | null }>;
   }>;
 };
@@ -218,6 +221,14 @@ export function getTrainingAnalytics(requestedDays = 28): TrainingAnalytics {
   const mealsByDay = new Map<string, FoodLog[]>();
   meals.forEach(meal => mealsByDay.set(meal.loggedOn, [...(mealsByDay.get(meal.loggedOn) ?? []), meal]));
   const bodyByDay = new Map(bodyMetrics.map(metric => [metric.measuredOn, metric]));
+  const estimateForMetric = (metric: BodyMetric) => estimateBodyComposition({
+    ageYears: settings.ageYears,
+    bodyFormulaSex: settings.bodyFormulaSex,
+    heightCm: settings.heightCm,
+    weightKg: metric.weightKg,
+    waistCm: metric.waistCm,
+    waistMeasurementSite: metric.waistMeasurementSite,
+  });
   const sessionsByDay = new Map<string, typeof sessions>();
   sessions.forEach(session => {
     const date = session.startedAt.slice(0, 10);
@@ -275,6 +286,7 @@ export function getTrainingAnalytics(requestedDays = 28): TrainingAnalytics {
           ...(metric.weightKg === undefined ? {} : { weightKg: metric.weightKg }),
           ...(metric.bodyFatPercent === undefined ? {} : { bodyFatPercent: metric.bodyFatPercent }),
           ...(metric.waistCm === undefined ? {} : { waistCm: metric.waistCm }),
+          ...(metric.waistMeasurementSite === undefined ? {} : { waistMeasurementSite: metric.waistMeasurementSite }),
           ...(metric.notes === undefined ? {} : { notes: metric.notes }),
         } : null;
       })(),
@@ -314,6 +326,14 @@ export function getTrainingAnalytics(requestedDays = 28): TrainingAnalytics {
       targetWeightKg: settings.targetWeightKg,
       weightSeries: bodyMetrics.flatMap(metric => metric.weightKg === undefined ? [] : [{ date: metric.measuredOn, value: metric.weightKg }]),
       bodyFatSeries: bodyMetrics.flatMap(metric => metric.bodyFatPercent === undefined ? [] : [{ date: metric.measuredOn, value: metric.bodyFatPercent }]),
+      latestComposition: (() => {
+        const metric = bodyMetrics.at(-1);
+        if (!metric) return null;
+        const estimate = estimateForMetric(metric);
+        const methodNote = estimate.methodNote ? `${estimate.methodNote} 本次估算使用生成报告时的当前身体资料；历史测量没有保存当时的身高、年龄与方程分类，不据此生成历史估算趋势。` : undefined;
+        return { ...estimate, ...(methodNote ? { methodNote } : {}), measuredOn: metric.measuredOn, ...(metric.bodyFatPercent === undefined ? {} : { measuredBodyFatPercent: metric.bodyFatPercent }), ...(metric.weightKg === undefined ? {} : { measuredWeightKg: metric.weightKg }), ...(metric.waistCm === undefined ? {} : { measuredWaistCm: metric.waistCm }), ...(metric.waistMeasurementSite === undefined ? {} : { waistMeasurementSite: metric.waistMeasurementSite }) };
+      })(),
+      compositionProfile: { ...(settings.heightCm === undefined ? {} : { heightCm: settings.heightCm }), ...(settings.ageYears === undefined ? {} : { ageYears: settings.ageYears }), ...(settings.bodyFormulaSex === undefined ? {} : { formulaSex: settings.bodyFormulaSex }) },
     },
     habits: { habitCount: activeHabitCount, completedLogs: completedHabitLogs, loggedEntries: loggedHabitEntries, loggingCoverageRate: habitLoggingCoverageRate, checkInCompletionRate: habitCompletionRate, currentStreaks },
     goals: { calorieGoal: settings.calorieGoal, sleepGoalHours, targetWeightKg: settings.targetWeightKg },

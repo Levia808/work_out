@@ -71,6 +71,13 @@ describe('training analysis presentation normalization', () => {
         bodyFatChangePercent: -0.5, targetWeightKg: 68,
         weightSeries: [{ date: '2026-10-06', value: 71.8 }, { date: '2026-10-09', value: 71.5 }, { date: '2026-10-12', value: 71.2 }],
         bodyFatSeries: [{ date: '2026-10-06', value: 18.6 }, { date: '2026-10-12', value: 18.1 }],
+        latestComposition: {
+          measuredOn: '2026-10-12', measuredWeightKg: 71.2, measuredBodyFatPercent: 18.1, measuredWaistCm: 88,
+          waistMeasurementSite: 'midpoint', bmi: 24.6, bodyFatEstimatePercent: 22.3,
+          estimatedFatMassKg: 15.9, estimatedFatFreeMassKg: 55.3, method: 'Liu 等（2015）',
+          methodKey: 'liu-2015-china', methodNote: '来源方程与误差提示。',
+        },
+        compositionProfile: { heightCm: 170, ageYears: 45, formulaSex: 'male' },
       },
       habits: { habitCount: 2, completedLogs: 5, loggedEntries: 14, loggingCoverageRate: 25, checkInCompletionRate: 36, currentStreaks: [] },
       goals: { calorieGoal: 2000, sleepGoalHours: 8, targetWeightKg: 68 },
@@ -103,6 +110,10 @@ describe('training analysis presentation normalization', () => {
       { title: '体脂变化', unit: '%', labels: ['10-06', '10-12'], values: [18.6, 18.1] },
     ]));
     expect(report.detailed.metricDetails.find(metric => metric.key === 'body')?.value).toBe(71.2);
+    expect(report.bodyComposition?.measuredBodyFatPercent).toBe(18.1);
+    expect(report.bodyComposition?.estimate.bodyFatEstimatePercent).toBe(22.3);
+    expect(report.bodyComposition?.estimate.methodKey).toBe('liu-2015-china');
+    expect(report.bodyComposition?.profile.heightCm).toBe(170);
   });
 
   it('does not render model trends when the source has fewer than two measurement points', () => {

@@ -53,8 +53,8 @@ export type FoodLog = {
 export type Habit = { id: string; name: string; icon: string; createdAt: string };
 export type HabitLog = { id: string; habitId: string; loggedOn: string; completed: boolean };
 export type SleepLog = { id: string; loggedOn: string; fellAsleepAt: string; wokeAt: string; durationMinutes: number; quality?: number };
-export type BodyMetric = { id: string; measuredOn: string; weightKg?: number; bodyFatPercent?: number; waistCm?: number; notes?: string };
-export type UserSettings = { calorieGoal?: number; sleepGoalMinutes?: number; targetWeightKg?: number; aiProvider?: AiProvider; qwenApiKey?: string; deepseekApiKey?: string };
+export type BodyMetric = { id: string; measuredOn: string; weightKg?: number; bodyFatPercent?: number; waistCm?: number; waistMeasurementSite?: 'midpoint' | 'narrowest'; notes?: string };
+export type UserSettings = { calorieGoal?: number; sleepGoalMinutes?: number; targetWeightKg?: number; heightCm?: number; ageYears?: number; bodyFormulaSex?: 'male' | 'female'; aiProvider?: AiProvider; qwenApiKey?: string; deepseekApiKey?: string };
 
 export type DashboardData = {
   trainingProgress: number;

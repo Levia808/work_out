@@ -133,7 +133,7 @@ function buildPreviewTrainingAnalysis(days = 7): TrainingAnalysis {
     ].filter(Boolean),
     suggestions,
   };
-  return {
+  return bindTrainingAnalysisToSourceData({
     compact,
     detailed: {
       overview: compact.summary,
@@ -148,7 +148,7 @@ function buildPreviewTrainingAnalysis(days = 7): TrainingAnalysis {
       nextSteps: suggestions,
       cautions: ['演示报告只用于验证界面与交互；真实报告仅使用用户当前已保存的数据。'],
     },
-  };
+  }, data);
 }
 
 /** Seed clearly marked reports so every report surface can be verified locally. */

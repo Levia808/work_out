@@ -3,11 +3,14 @@ import type { CSSProperties } from 'react';
 import type { TrainingAnalysisDetail, TrainingAnalysisMetricDetail, TrainingMetricKey } from '../lib/ai';
 import { AnimatedNumber } from './AnimatedNumber';
 import { AiScoreRing, AiTrendChart } from './AiReportCard';
+import { BodyCompositionReport } from './BodyCompositionReport';
+import type { TrainingAnalysisBodyComposition } from '../lib/ai';
 
 type AiDetailedReportProps = {
   compact: { summary: string; score: { value: number | null; label: string; basis: string } };
   detail: TrainingAnalysisDetail;
   provider?: string;
+  bodyComposition?: TrainingAnalysisBodyComposition | null;
 };
 
 const metricIcons: Record<TrainingMetricKey, typeof Dumbbell> = {
@@ -35,7 +38,7 @@ function DetailMetric({ metric, index }: { metric: TrainingAnalysisMetricDetail;
   </article>;
 }
 
-export function AiDetailedReport({ compact, detail, provider }: AiDetailedReportProps) {
+export function AiDetailedReport({ compact, detail, provider, bodyComposition = null }: AiDetailedReportProps) {
   return <article className="ai-detailed-report report-reveal">
     <header className="detail-report-hero">
       <div className="detail-report-copy"><h2>详细训练分析</h2><p>{detail.overview || compact.summary || '暂无可用分析。'}</p><div className="detail-report-basis"><Target size={14} />{compact.score.basis || '仅使用当前已保存的数据。'}</div></div>
@@ -51,6 +54,8 @@ export function AiDetailedReport({ compact, detail, provider }: AiDetailedReport
     </section>
 
     <section className="detail-section"><div className="detail-section-heading"><h3>指标解读</h3><span>{detail.metricDetails.length} 项</span></div>{detail.metricDetails.length ? <div className="detail-metric-grid">{detail.metricDetails.map((metric, index) => <DetailMetric key={metric.key} metric={metric} index={index} />)}</div> : <div className="detail-empty-panel">暂无可解读的指标</div>}</section>
+
+    <BodyCompositionReport data={bodyComposition} detailed />
 
     <section className="detail-section"><div className="detail-section-heading"><h3>趋势与变化</h3><span>基于已记录值</span></div>{detail.trends.length ? <div className="detail-trends-grid">{detail.trends.map((trend, index) => <AiTrendChart key={`${trend.title}-${index}`} trend={trend} />)}</div> : <div className="detail-empty-panel">暂无足够记录形成趋势</div>}</section>
 

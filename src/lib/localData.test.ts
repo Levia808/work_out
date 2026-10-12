@@ -69,7 +69,7 @@ describe('day-level analysis source records', () => {
       const habitId = 'water';
       const uncheckedHabitId = 'stretch';
       const unloggedHabitId = 'read';
-      values.set('fittrack:settings', JSON.stringify({ calorieGoal: 2100, sleepGoalMinutes: 480 }));
+      values.set('fittrack:settings', JSON.stringify({ calorieGoal: 2100, sleepGoalMinutes: 480, heightCm: 170, bodyFormulaSex: 'male' }));
       values.set('fittrack:workout-plans', JSON.stringify([{
         id: planId, title: '上肢', weekday: new Date().getDay(), weekMode: 'every', active: true,
         createdAt: `${today}T00:00:00.000Z`, updatedAt: `${today}T00:00:00.000Z`,
@@ -85,7 +85,7 @@ describe('day-level analysis source records', () => {
         { id: 'meal2', loggedOn: today, meal: 'lunch', name: '鸡肉饭', grams: 350, kcal: 620, protein: 42, carbs: 70, fat: 12, source: 'manual' },
       ]));
       values.set('fittrack:sleep-logs', JSON.stringify([{ id: 'sleep', loggedOn: today, fellAsleepAt: `${today}T23:00`, wokeAt: `${today}T07:00`, durationMinutes: 480, quality: 4 }]));
-      values.set('fittrack:body-metrics', JSON.stringify([{ id: 'body', measuredOn: today, weightKg: 70.5, bodyFatPercent: 18, waistCm: 78, notes: '晨起测量' }]));
+      values.set('fittrack:body-metrics', JSON.stringify([{ id: 'body', measuredOn: today, weightKg: 70.5, bodyFatPercent: 18, waistCm: 78, waistMeasurementSite: 'midpoint', notes: '晨起测量' }]));
       values.set('fittrack:habits', JSON.stringify([
         { id: habitId, name: '喝水', icon: 'Droplets', createdAt: `${today}T00:00:00.000Z` },
         { id: uncheckedHabitId, name: '拉伸', icon: 'Check', createdAt: `${today}T00:00:00.000Z` },
@@ -105,7 +105,13 @@ describe('day-level analysis source records', () => {
       expect(JSON.stringify(record.meals.map(meal => meal.name))).toBe(JSON.stringify(['燕麦', '鸡肉饭']));
       expect(record.meals[0].notes).toBe('训练前');
       expect(record.sleep?.durationMinutes).toBe(480);
-      expect(JSON.stringify(record.body)).toBe(JSON.stringify({ weightKg: 70.5, bodyFatPercent: 18, waistCm: 78, notes: '晨起测量' }));
+      expect(JSON.stringify(record.body)).toBe(JSON.stringify({ weightKg: 70.5, bodyFatPercent: 18, waistCm: 78, waistMeasurementSite: 'midpoint', notes: '晨起测量' }));
+      expect(analytics.body.latestComposition?.measuredOn).toBe(today);
+      expect(analytics.body.latestComposition?.measuredBodyFatPercent).toBe(18);
+      expect(analytics.body.latestComposition?.methodKey).toBe('liu-2015-china');
+      expect(analytics.body.latestComposition?.methodNote?.includes('当前身体资料')).toBe(true);
+      expect('composition' in (record.body ?? {})).toBe(false);
+      expect('estimatedBodyFatSeries' in analytics.body).toBe(false);
       expect(JSON.stringify(record.habits)).toBe(JSON.stringify([
         { name: '喝水', logged: true, completed: true },
         { name: '拉伸', logged: true, completed: false },

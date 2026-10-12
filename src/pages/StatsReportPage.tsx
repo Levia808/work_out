@@ -21,7 +21,7 @@ export function StatsReportPage() {
       <Link to={`/stats${previewMode ? '?demo=1' : ''}`} className="secondary-back-link"><ArrowLeft size={17} />返回统计</Link>
       {report ? <>
         <div className="report-meta-strip"><CalendarDays size={15} /><span>{new Date(job!.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><span>{job!.inputSummary === 'analysis:1' ? '今日' : job!.inputSummary === 'analysis:7' ? '本周' : job!.inputSummary === 'analysis:28' ? '持续训练' : '训练分析'}</span><span>{providerLabel(job!)}</span></div>
-        <AiDetailedReport compact={report.compact} detail={report.detailed} provider={providerLabel(job!)} />
+        <AiDetailedReport compact={report.compact} detail={report.detailed} provider={providerLabel(job!)} bodyComposition={report.bodyComposition} />
       </> : <section className="card detail-empty-state"><h2>{job ? '此记录没有可展示的报告' : '未找到这份报告'}</h2><p>{job?.error || '该报告可能已被删除，或生成时未能保存完整结果。'}</p><Link className="secondary-action-link" to={`/stats/history${previewMode ? '?demo=1' : ''}`}>查看报告记录</Link></section>}
     </div>
   </AppShell>;

@@ -1,11 +1,12 @@
 import { Activity, ArrowUpRight, Check, CircleAlert, Dumbbell, Flame, Lightbulb, Moon, Scale } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import type { TrainingAnalysisCompact, TrainingAnalysisMetric, TrainingAnalysisTrend, TrainingMetricKey } from '../lib/ai';
+import type { TrainingAnalysis, TrainingAnalysisCompact, TrainingAnalysisMetric, TrainingAnalysisTrend, TrainingMetricKey } from '../lib/ai';
+import { BodyCompositionReport } from './BodyCompositionReport';
 import { AnimatedNumber } from './AnimatedNumber';
 
 type AiReportCardProps = {
-  report: { compact: TrainingAnalysisCompact };
+  report: Pick<TrainingAnalysis, 'compact' | 'bodyComposition'>;
   provider?: string;
   detailHref?: string;
 };
@@ -101,6 +102,7 @@ export function AiReportCard({ report, provider, detailHref }: AiReportCardProps
       <div><strong><AnimatedNumber value={keySuggestions.length} /></strong><span>下一步</span></div>
     </div>
     {compact.trend.labels.length ? <AiTrendChart trend={compact.trend} compact /> : null}
+    <BodyCompositionReport data={report.bodyComposition} />
     <div className="report-insight-grid">
       <section className="report-insight-block"><div className="report-section-title"><Check size={15} />做得好</div>{keyStrengths.length ? <div className="report-chip-list">{keyStrengths.map(item => <span className="report-chip" key={item}>{item}</span>)}</div> : <p className="report-empty-copy">暂无可确认的优势</p>}</section>
       <section className="report-insight-block"><div className="report-section-title"><Lightbulb size={15} />下一步</div>{keySuggestions.length ? <div className="report-next-list">{keySuggestions.map((item, index) => <div className="report-next-item" key={`${item.title}-${index}`}><div className="row"><strong>{item.title}</strong>{item.priority === 'high' ? <CircleAlert size={14} /> : null}</div><p>{item.body}</p></div>)}</div> : <p className="report-empty-copy">暂无建议</p>}</section>

@@ -114,7 +114,7 @@ export function WorkoutSessionPage() {
                 <div className="set-card-header">
                   <div><strong>第 {setNumber} 组</strong><span className="set-card-target">目标 {item.targetReps} 次</span></div>
                   <Button isIconOnly radius="full" className={`set-complete-btn ${draft.completed ? 'is-complete' : ''}`} type="button" onPress={() => toggleCompleted(exercise.id, setNumber)} aria-label={`${draft.completed ? '取消完成' : '完成'}${exercise.name}第${setNumber}组`} title={draft.completed ? '取消完成' : '完成这一组'}>
-                    {draft.completed ? <CircleCheck size={20} /> : <Check size={20} />}
+                    <span className="set-action-icon" aria-hidden="true">{draft.completed ? <CircleCheck size={20} /> : <Check size={20} />}</span>
                   </Button>
                 </div>
                 <div className="set-card-divider" aria-hidden="true" />
@@ -122,7 +122,7 @@ export function WorkoutSessionPage() {
                   <label className="label set-field"><span>重量 kg</span><input className="input-field compact-field" inputMode="decimal" value={draft.weightKg} onChange={event => updateDraft(key, { weightKg: event.target.value })} placeholder="自重填 0" aria-label={`${exercise.name}第${setNumber}组重量`} /></label>
                   <label className="label set-field"><span>次数</span><input className="input-field compact-field" inputMode="numeric" value={draft.reps} onChange={event => updateDraft(key, { reps: event.target.value })} placeholder="次数" aria-label={`${exercise.name}第${setNumber}组次数`} /></label>
                   <Button isIconOnly radius="full" variant="light" className="set-save-btn" type="button" onPress={() => persistSet(exercise.id, setNumber, draft.completed)} aria-label={`保存${exercise.name}第${setNumber}组`} title={saved === key ? '已保存' : '保存这一组'}>
-                    {saved === key ? <CircleCheck size={18} /> : <Save size={18} />}
+                    <span className="set-action-icon" aria-hidden="true">{saved === key ? <CircleCheck size={18} /> : <Save size={18} />}</span>
                   </Button>
                 </div>
                 <div className="set-card-message" aria-live="polite">

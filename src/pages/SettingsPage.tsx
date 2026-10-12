@@ -1,4 +1,4 @@
-import { ChevronRight, KeyRound, LogOut, ShieldCheck, Target, UserRound, X } from 'lucide-react';
+import { ChevronRight, KeyRound, LogOut, Scale, ShieldCheck, Target, UserRound, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
@@ -6,7 +6,7 @@ import { useAuth } from '../app/AuthProvider';
 import { getSettings, saveSettings } from '../lib/localData';
 import type { AiProvider, UserSettings } from '../lib/types';
 
-type Panel = 'goals' | 'ai' | 'privacy' | null;
+type Panel = 'goals' | 'body' | 'ai' | 'privacy' | null;
 
 function displayName(email: string | undefined, metadata: Record<string, unknown> | undefined) {
   const name = metadata?.name ?? metadata?.full_name;
@@ -23,6 +23,9 @@ export function SettingsPage() {
   const [calorieGoal, setCalorieGoal] = useState(() => String(getSettings().calorieGoal ?? ''));
   const [sleepGoal, setSleepGoal] = useState(() => getSettings().sleepGoalMinutes ? String((getSettings().sleepGoalMinutes ?? 0) / 60) : '');
   const [targetWeight, setTargetWeight] = useState(() => String(getSettings().targetWeightKg ?? ''));
+  const [heightCm, setHeightCm] = useState(() => String(getSettings().heightCm ?? ''));
+  const [ageYears, setAgeYears] = useState(() => String(getSettings().ageYears ?? ''));
+  const [bodyFormulaSex, setBodyFormulaSex] = useState<'male' | 'female' | ''>(() => getSettings().bodyFormulaSex ?? '');
   const [aiProvider, setAiProvider] = useState<AiProvider>(() => { const initial = getSettings(); return initial.aiProvider ?? (initial.qwenApiKey ? 'qwen' : 'deepseek'); });
   const [apiKey, setApiKey] = useState('');
   const [clearKey, setClearKey] = useState(false);
@@ -37,6 +40,9 @@ export function SettingsPage() {
       setCalorieGoal(next.calorieGoal === undefined ? '' : String(next.calorieGoal));
       setSleepGoal(next.sleepGoalMinutes === undefined ? '' : String(next.sleepGoalMinutes / 60));
       setTargetWeight(next.targetWeightKg === undefined ? '' : String(next.targetWeightKg));
+      setHeightCm(next.heightCm === undefined ? '' : String(next.heightCm));
+      setAgeYears(next.ageYears === undefined ? '' : String(next.ageYears));
+      setBodyFormulaSex(next.bodyFormulaSex ?? '');
       setAiProvider(next.aiProvider ?? (next.qwenApiKey ? 'qwen' : 'deepseek'));
       setApiKey('');
       setClearKey(false);
@@ -69,6 +75,19 @@ export function SettingsPage() {
       sleepGoalMinutes: sleep === undefined ? undefined : Math.round(sleep * 60),
       targetWeightKg: target,
     });
+    setSettings(getSettings());
+    setSaved(true);
+    setError('');
+  };
+
+  const saveBodyProfile = () => {
+    const height = heightCm.trim() ? Number(heightCm) : undefined;
+    const age = ageYears.trim() ? Number(ageYears) : undefined;
+    if ((height !== undefined && (!Number.isFinite(height) || height < 100 || height > 230)) || (age !== undefined && (!Number.isInteger(age) || age < 18 || age > 100))) {
+      setError('身高请填写 100–230 cm，年龄请填写 18–100 岁；不确定的项目可留空。');
+      return;
+    }
+    saveSettings({ heightCm: height, ageYears: age, bodyFormulaSex: bodyFormulaSex || undefined });
     setSettings(getSettings());
     setSaved(true);
     setError('');
@@ -114,6 +133,19 @@ export function SettingsPage() {
           <label className="label">每日睡眠目标（小时）<input className="input-field" inputMode="decimal" value={sleepGoal} onChange={event => { setSleepGoal(event.target.value); setSaved(false); }} placeholder="可留空" /></label>
           <label className="label">目标体重（kg）<input className="input-field" inputMode="decimal" value={targetWeight} onChange={event => { setTargetWeight(event.target.value); setSaved(false); }} placeholder="可留空" /></label>
           <button className="primary-btn row" type="button" onClick={saveGoals}><span>{saved ? '已保存' : '保存目标'}</span><ChevronRight size={18} /></button>
+        </div> : null}
+
+        <button className="list-row settings-action" onClick={() => togglePanel('body')} aria-expanded={panel === 'body'}>
+          <Scale size={20} className="muted" /><span className="list-content"><span className="list-title">身体资料</span><span className="list-meta">{settings.heightCm ? `${settings.heightCm} cm` : '补充资料以计算身体组成'}</span></span><ChevronRight size={18} className={`muted settings-chevron ${panel === 'body' ? 'is-open' : ''}`} />
+        </button>
+        {panel === 'body' ? <div className="settings-panel stack">
+          <p className="card-copy">仅在本机按已发表的围度方程估算 BMI、腰高比和体脂：Liu（2015）中国成人方程使用腰肋间中点，女性公式需要年龄，独立验证样本为 50–70 岁；Peng（2026）中国女性方程使用腰部最窄处，研究样本年龄为 20–79 岁，重复交叉验证总体体脂 RMSE 约 3.47 个百分点。年龄未知或超出相应样本范围时会标记适配性；群体误差不是个人误差区间。年龄、身高和方程分类仅在你主动生成 AI 报告时发送给所选服务；不需要时可以留空。</p>
+          <label className="label">身高（cm）<input className="input-field" inputMode="decimal" value={heightCm} onChange={event => { setHeightCm(event.target.value); setSaved(false); }} placeholder="例如 168" /></label>
+          <label className="label">年龄（岁）<input className="input-field" inputMode="numeric" value={ageYears} onChange={event => { setAgeYears(event.target.value); setSaved(false); }} placeholder="18–100 岁" /></label>
+          <label className="label">体脂方程分类<select className="input-field" value={bodyFormulaSex} onChange={event => { setBodyFormulaSex(event.target.value as 'male' | 'female' | ''); setSaved(false); }}><option value="">不指定</option><option value="male">男性方程</option><option value="female">女性方程</option></select></label>
+          <p className="health-hint">这是研究方程所用的二分类参数，不代表性别认同。未填写必要资料时不会生成体脂估算。</p>
+          <button className="primary-btn row" type="button" onClick={saveBodyProfile}><span>{saved ? '已保存' : '保存身体资料'}</span><ChevronRight size={18} /></button>
+          {error && panel === 'body' ? <p className="form-error" role="alert">{error}</p> : null}
         </div> : null}
 
         <button className="list-row settings-action" onClick={() => togglePanel('ai')} aria-expanded={panel === 'ai'}>

@@ -2548,3 +2548,102 @@ label {
     overflow-wrap: anywhere;
   }
 }
+
+/* Source-labelled body composition estimates: never visually merge with measured data. */
+.composition-card { gap: 14px; }
+.body-section-heading { align-items: center; }
+.body-section-heading > div { min-width: 0; }
+.composition-primary { display: grid; gap: 8px; padding: 15px; border-radius: 17px; background: linear-gradient(145deg, #222225, #19191c); }
+.composition-overline { color: #a1a1aa; font-size: .68rem; font-weight: 700; letter-spacing: .04em; }
+.composition-primary > div:nth-child(2) { color: #fff; font-size: clamp(2.1rem, 10vw, 3.1rem); font-weight: 850; letter-spacing: -.055em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.composition-value { display: inline-flex; align-items: baseline; gap: 4px; color: #fff; font-variant-numeric: tabular-nums; }
+.composition-value small { color: #9a9aa0; font-size: .44em; font-weight: 650; letter-spacing: 0; }
+.composition-empty { color: #777780; font-size: .84rem; font-weight: 650; }
+.composition-primary > div .composition-value small { font-size: .39em; }
+.composition-primary p, .composition-method, .composition-limits { margin: 0; color: #9999a1; font-size: .71rem; line-height: 1.5; overflow-wrap: anywhere; }
+.composition-split-bar { display: flex; width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: #3f3f46; }
+.composition-split-bar span:first-child { background: #a1a1aa; }
+.composition-split-bar span:last-child { background: #f4f4f5; }
+.composition-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.composition-grid article { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid rgba(255,255,255,.055); border-radius: 14px; background: #1d1d20; }
+.composition-grid article > span:first-child { color: #9a9aa0; font-size: .7rem; line-height: 1.3; }
+.composition-grid .composition-value { flex-wrap: wrap; font-size: 1.2rem; font-weight: 800; }
+.composition-unavailable { display: grid; justify-items: start; gap: 10px; padding: 13px; border-radius: 14px; color: #a1a1aa; background: #1d1d20; font-size: .76rem; line-height: 1.45; }
+.composition-unavailable .secondary-action-link { min-height: 40px; }
+.measured-fat-row, .composition-measured-report { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 11px 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 13px; background: #111113; }
+.measured-fat-row > span, .composition-measured-report > span { display: grid; gap: 3px; min-width: 0; }
+.measured-fat-row strong, .composition-measured-report strong { color: #f4f4f5; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.measured-fat-row small, .composition-measured-report small { color: #85858d; font-size: .65rem; line-height: 1.35; }
+.composition-limits { padding: 0 2px; }
+.body-composition-report { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: #18181b; animation: report-reveal .48s cubic-bezier(.22,1,.36,1) both; }
+.body-composition-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.body-composition-report-heading > div { display: grid; gap: 3px; min-width: 0; }
+.body-composition-report-heading h3 { margin: 0; color: #fff; font-size: .98rem; }
+.body-composition-report-heading time { flex: 0 0 auto; color: #7e7e86; font-size: .66rem; font-variant-numeric: tabular-nums; }
+.composition-report-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; min-width: 0; }
+.composition-report-stat { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 10px; border-radius: 13px; background: #222225; }
+.composition-report-stat > span { color: #9999a1; font-size: .64rem; line-height: 1.3; overflow-wrap: anywhere; }
+.composition-report-stat > strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px; min-width: 0; color: #fff; font-size: clamp(.95rem, 4.2vw, 1.22rem); line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.composition-report-stat > strong small { color: #9a9aa0; font-size: .64em; }
+.composition-report-stat > i { display: block; height: 4px; overflow: hidden; border-radius: 999px; background: #414147; }
+.composition-report-stat > i b { display: block; height: 100%; border-radius: inherit; background: #d4d4d8; animation: composition-meter-in .8s cubic-bezier(.22,1,.36,1) both; }
+@keyframes composition-meter-in { from { width: 0; } }
+.composition-report-note, .composition-report-basis, .composition-report-unavailable { margin: 0; color: #92929a; font-size: .68rem; line-height: 1.5; overflow-wrap: anywhere; }
+.composition-report-basis { padding: 10px; border-radius: 12px; background: #222225; }
+.composition-report-unavailable { padding: 12px; border-radius: 12px; background: #222225; }
+.body-composition-report.is-detailed { padding: 16px; border-radius: 19px; background: #161618; }
+.body-composition-report.is-detailed .composition-report-grid { gap: 8px; }
+@media (max-width: 390px) {
+  .composition-report-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .composition-primary { padding: 13px; }
+  .composition-grid article { padding: 10px; }
+}
+
+.composition-record-values { display: grid; gap: 4px; color: #aaaab1; font-size: .7rem; line-height: 1.4; text-align: right; }
+.composition-record-values b { color: #fff; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.composition-region-estimate { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 3px 12px; margin-top: 12px; padding: 12px; border-radius: 14px; background: #222225; }
+.composition-region-estimate > span { color: #f4f4f5; font-size: .76rem; font-weight: 650; }
+.composition-region-estimate > strong { color: #fff; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.composition-region-estimate > small { grid-column: 1 / -1; color: #909098; font-size: .67rem; line-height: 1.4; }
+
+/* Workout set actions share one HeroUI touch target size and align to the
+   numeric fields' 48px control height, avoiding the 4px vertical drift. */
+.workout-session-page .set-complete-btn,
+.workout-session-page .set-save-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  flex: 0 0 48px;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 50% !important;
+}
+
+
+/* Keep each glyph and its circular tray on one explicit centering axis.
+   A fixed inner box avoids baseline/line-height drift from SVG children. */
+.workout-session-page .set-complete-btn,
+.workout-session-page .set-save-btn {
+  display: grid !important;
+  place-items: center;
+  align-content: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.workout-session-page .set-action-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  line-height: 0;
+}
+
+.workout-session-page .set-action-icon > svg {
+  display: block;
+  flex: none;
+  margin: 0;
+}
