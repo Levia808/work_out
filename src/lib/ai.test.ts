@@ -1,4 +1,5 @@
-import { extractAiText, getAnalysisProvider, normalizeTrainingAnalysis } from './ai';
+import { bindTrainingAnalysisToSourceData, extractAiText, getAnalysisProvider, normalizeTrainingAnalysis } from './ai';
+import type { TrainingAnalytics } from './localData';
 
 describe('AI provider selection', () => {
   it('uses only the selected provider key', () => {
@@ -57,6 +58,62 @@ describe('training analysis presentation normalization', () => {
       },
     });
     expect(JSON.stringify(report.compact.trend.values)).toBe('[72.4,71.8]');
+  });
+
+  it('replaces model-invented metric values and chart points with source records', () => {
+    const source: TrainingAnalytics = {
+      period: { days: 7, start: '2026-10-06', end: '2026-10-12' },
+      training: { plannedSessions: 2, completedSessions: 1, completionRate: 50, sessions: 1, completedSets: 4, totalVolume: 840, exerciseStats: [] },
+      sleep: { loggedDays: 3, avgHours: 7.75, goalRate: 67, goalHours: 8 },
+      nutrition: { loggedDays: 2, avgKcal: 1160, avgProtein: 83, avgCarbs: 120, avgFat: 42, calorieGoal: 2000 },
+      body: {
+        loggedDays: 3, latestWeightKg: 71.2, weightChangeKg: -0.6, latestBodyFatPercent: 18.1,
+        bodyFatChangePercent: -0.5, targetWeightKg: 68,
+        weightSeries: [{ date: '2026-10-06', value: 71.8 }, { date: '2026-10-09', value: 71.5 }, { date: '2026-10-12', value: 71.2 }],
+        bodyFatSeries: [{ date: '2026-10-06', value: 18.6 }, { date: '2026-10-12', value: 18.1 }],
+      },
+      habits: { habitCount: 2, completedLogs: 5, completionRate: 36, currentStreaks: [] },
+      goals: { calorieGoal: 2000, sleepGoalHours: 8, targetWeightKg: 68 },
+      missingData: [],
+    };
+    const report = bindTrainingAnalysisToSourceData({
+      compact: {
+        summary: '体重记录呈下降趋势。', dataNote: '错误范围', score: { value: 99, label: '分数', basis: '模型生成' },
+        metrics: [{ key: 'body', label: '体重', value: -8.5, unit: 'kg', note: '虚构值', progress: 99 }],
+        strengths: [], suggestions: [], trend: { title: '体重', unit: 'kg', labels: ['错误'], values: [-8.5] },
+      },
+      detailed: {
+        metricDetails: [{ key: 'body', title: '体重', value: 80, unit: 'kg', interpretation: '记录有所下降。', evidence: '', progress: 100 }],
+        trends: [{ title: '体重范围', unit: 'kg', labels: ['最低', '最高'], values: [-8.5, 80] }],
+      },
+    }, source);
+
+    expect(JSON.stringify(report.compact.metrics.find(metric => metric.key === 'body'))).toBe(JSON.stringify({ key: 'body', label: '体测', value: 71.2, unit: 'kg', note: '最新已记录体脂 18.1%', progress: null }));
+    expect(report.compact.score.value).toBe(53);
+    expect(!report.compact.trend.values.includes(-8.5)).toBe(true);
+    expect(JSON.stringify(report.detailed.trends)).toBe(JSON.stringify([
+      { title: '体重变化', unit: 'kg', labels: ['10-06', '10-09', '10-12'], values: [71.8, 71.5, 71.2] },
+      { title: '体脂变化', unit: '%', labels: ['10-06', '10-12'], values: [18.6, 18.1] },
+    ]));
+    expect(report.detailed.metricDetails.find(metric => metric.key === 'body')?.value).toBe(71.2);
+  });
+
+  it('does not render model trends when the source has fewer than two measurement points', () => {
+    const source: TrainingAnalytics = {
+      period: { days: 1, start: '2026-10-12', end: '2026-10-12' },
+      training: { plannedSessions: 0, completedSessions: 0, sessions: 0, completedSets: 0, totalVolume: 0, exerciseStats: [] },
+      sleep: { loggedDays: 0 }, nutrition: { loggedDays: 0 },
+      body: { loggedDays: 0, weightSeries: [], bodyFatSeries: [] },
+      habits: { habitCount: 0, completedLogs: 0, currentStreaks: [] }, goals: {}, missingData: ['体重体测'],
+    };
+    const report = bindTrainingAnalysisToSourceData({
+      compact: { summary: '暂无记录。', dataNote: '', metrics: [{ key: 'body', value: 99, unit: 'kg' }], trend: { title: '伪造', unit: 'kg', labels: ['今天'], values: [99] } },
+      detailed: { trends: [{ title: '伪造', unit: 'kg', labels: ['今天', '明天'], values: [99, 100] }] },
+    }, source);
+
+    expect(report.compact.metrics.find(metric => metric.key === 'body')?.value).toBe(null);
+    expect(JSON.stringify(report.compact.trend.labels)).toBe('[]');
+    expect(JSON.stringify(report.detailed.trends)).toBe('[]');
   });
 
   it('prioritizes high-impact suggestions, removes leaked debug tails, and avoids duplicate evidence', () => {

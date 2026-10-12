@@ -1,5 +1,5 @@
 import type { AiProvider } from './types';
-import type { TrainingAnalysis } from './ai';
+import { bindTrainingAnalysisToSourceData, type TrainingAnalysis } from './ai';
 import { getTrainingAnalytics, isPreviewMode, makeId } from './localData';
 
 export type AiJobKind = 'meal-photo' | 'workout-plan-image' | 'training-analysis';
@@ -44,14 +44,27 @@ function writeJobs(jobs: AiJob[]) {
 }
 
 export function getAiJobs(): AiJob[] {
-  return readJobs().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const jobs = readJobs().map(job => {
+    if (!isPreviewMode() || job.kind !== 'training-analysis' || !job.result) return job;
+    const match = /^analysis:(\d+)$/.exec(job.inputSummary);
+    if (!match) return { ...job, source: 'preview' as const };
+    const days = Math.max(1, Number(match[1]));
+    return {
+      ...job,
+      source: 'preview' as const,
+      // Older local smoke-test reports predate source-bound charts. Rebind
+      // their visible facts to the synthetic preview records, never the AI.
+      result: bindTrainingAnalysisToSourceData(job.result, getTrainingAnalytics(days)),
+    };
+  });
+  return jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export function getLatestAiJob(kind: AiJobKind, inputSummary?: string) {
   return getAiJobs().find(job => job.kind === kind && (inputSummary === undefined || job.inputSummary === inputSummary));
 }
 
-export function createAiJob(input: Pick<AiJob, 'kind' | 'provider' | 'inputSummary'> & Partial<Pick<AiJob, 'status'>>): AiJob {
+export function createAiJob(input: Pick<AiJob, 'kind' | 'provider' | 'inputSummary'> & Partial<Pick<AiJob, 'status' | 'source'>>): AiJob {
   const now = new Date().toISOString();
   const job: AiJob = {
     id: makeId(),
@@ -62,6 +75,7 @@ export function createAiJob(input: Pick<AiJob, 'kind' | 'provider' | 'inputSumma
     updatedAt: now,
     status: input.status ?? 'submitting',
     retryable: true,
+    source: input.source ?? (isPreviewMode() ? 'preview' : 'user'),
   };
   writeJobs([...getAiJobs(), job]);
   return job;

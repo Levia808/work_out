@@ -508,12 +508,119 @@ export function normalizeTrainingAnalysis(input: unknown): TrainingAnalysis {
   return { compact, detailed };
 }
 
+function rounded(value: number | undefined, places = 1): number | null {
+  if (value === undefined || !Number.isFinite(value)) return null;
+  const factor = 10 ** places;
+  return Math.round(value * factor) / factor;
+}
+
+function boundedPercent(value: number | undefined): number | null {
+  return value === undefined || !Number.isFinite(value) ? null : Math.max(0, Math.min(100, Math.round(value)));
+}
+
+/**
+ * The model is useful for interpretation, not as a source of facts. Replace
+ * every displayed number and chart point with values computed from app data.
+ * This prevents plausible-looking but invented series from reaching charts.
+ */
+export function bindTrainingAnalysisToSourceData(input: unknown, data: TrainingAnalytics): TrainingAnalysis {
+  const generated = normalizeTrainingAnalysis(input);
+  const sleepProgress = boundedPercent(data.sleep.goalRate);
+  const nutritionProgress = data.nutrition.calorieGoal && data.nutrition.avgKcal !== undefined
+    ? boundedPercent(data.nutrition.avgKcal / data.nutrition.calorieGoal * 100)
+    : null;
+  const sourceMetrics: TrainingAnalysisMetric[] = [
+    {
+      key: 'training', label: '训练', value: rounded(data.training.completionRate, 0), unit: '%',
+      note: data.training.plannedSessions ? `${data.training.completedSessions} 次完成 / ${data.training.plannedSessions} 次计划` : '暂无可计算的计划完成率',
+      progress: boundedPercent(data.training.completionRate),
+    },
+    {
+      key: 'sleep', label: '睡眠', value: rounded(data.sleep.avgHours), unit: '小时',
+      note: data.sleep.loggedDays ? (data.sleep.goalRate === undefined ? `已记录 ${data.sleep.loggedDays} 天 · 尚未设置睡眠目标` : `${data.sleep.loggedDays} 天记录 · 达标率 ${sleepProgress}%`) : '暂无睡眠记录',
+      progress: sleepProgress,
+    },
+    {
+      key: 'nutrition', label: '饮食', value: rounded(data.nutrition.avgProtein), unit: 'g 蛋白质',
+      note: data.nutrition.loggedDays ? `日均 ${rounded(data.nutrition.avgKcal, 0) ?? '—'} kcal · ${data.nutrition.loggedDays} 天有记录` : '暂无饮食记录',
+      progress: nutritionProgress,
+    },
+    {
+      key: 'habits', label: '习惯', value: rounded(data.habits.completionRate, 0), unit: '%',
+      note: data.habits.habitCount ? `${data.habits.completedLogs} 次完成记录 · ${data.habits.habitCount} 个习惯` : '暂无习惯记录',
+      progress: boundedPercent(data.habits.completionRate),
+    },
+    {
+      key: 'body', label: '体测', value: rounded(data.body.latestWeightKg), unit: 'kg',
+      note: data.body.latestWeightKg === undefined ? '暂无体重记录' : data.body.latestBodyFatPercent === undefined ? '最新已记录体重' : `最新已记录体脂 ${rounded(data.body.latestBodyFatPercent)}%`,
+      progress: null,
+    },
+  ];
+  const scoredValues = sourceMetrics.map(metric => metric.progress).filter((value): value is number => value !== null);
+  const score = scoredValues.length ? Math.round(scoredValues.reduce((sum, value) => sum + value, 0) / scoredValues.length) : null;
+  const compactTrend: TrainingAnalysisTrend = {
+    title: '区间目标进度',
+    unit: '%',
+    labels: scoredValues.length ? sourceMetrics.map(metric => metric.label) : [],
+    values: scoredValues.length ? sourceMetrics.map(metric => metric.progress) : [],
+  };
+  const measurementTrends: TrainingAnalysisTrend[] = [];
+  if (data.body.weightSeries.length > 1) measurementTrends.push({
+    title: '体重变化', unit: 'kg', labels: data.body.weightSeries.map(point => point.date.slice(5)), values: data.body.weightSeries.map(point => point.value),
+  });
+  if (data.body.bodyFatSeries.length > 1) measurementTrends.push({
+    title: '体脂变化', unit: '%', labels: data.body.bodyFatSeries.map(point => point.date.slice(5)), values: data.body.bodyFatSeries.map(point => point.value),
+  });
+  const generatedMetricDetails = new Map(generated.detailed.metricDetails.map(item => [item.key, item]));
+  const dataNote = `过去 ${data.period.days} 天（${data.period.start} 至 ${data.period.end}）；所有数值与图表点均由已保存记录计算。`;
+  const metrics = sourceMetrics.map(metric => ({
+    ...metric,
+    note: metric.note || generatedMetricDetails.get(metric.key)?.interpretation || '',
+  }));
+  return {
+    compact: {
+      ...generated.compact,
+      dataNote,
+      score: {
+        value: score,
+        label: '记录完成度',
+        basis: '按当前区间可计算的训练计划、睡眠目标、饮食目标与习惯记录进度取平均；缺少目标或记录的项目不计入。',
+      },
+      metrics,
+      trend: compactTrend,
+    },
+    detailed: {
+      ...generated.detailed,
+      overview: generated.detailed.overview || generated.compact.summary,
+      coverage: {
+        period: `过去 ${data.period.days} 天（${data.period.start} 至 ${data.period.end}）`,
+        included: metrics.filter(metric => metric.value !== null).map(metric => metric.label),
+        missing: data.missingData,
+      },
+      metricDetails: metrics.map(metric => {
+        const interpretation = generatedMetricDetails.get(metric.key)?.interpretation ?? '';
+        return {
+          key: metric.key,
+          title: metric.label,
+          value: metric.value,
+          unit: metric.unit,
+          interpretation: interpretation || metric.note || '暂无可确认的解读。',
+          evidence: metric.note,
+          progress: metric.progress,
+        };
+      }),
+      trends: measurementTrends,
+      cautions: [...new Set([...generated.detailed.cautions, ...(data.missingData.length ? [`当前区间缺少${data.missingData.join('、')}数据，相关分析不作推断。`] : [])])],
+    },
+  };
+}
+
 export async function analyzeTraining(provider: AiProvider, apiKey: string, data: TrainingAnalytics): Promise<TrainingAnalysis> {
   const text = await callProvider(provider, apiKey, [
-    { role: 'system', content: '你是 FitTrack 的训练分析助手。你会收到用户在一个时间范围内的真实训练、睡眠、饮食、体重体测、习惯和目标数据。只允许基于已传入的数据分析；不得补全、猜测或伪造不存在的记录。缺失字段必须写“暂无数据”或“无法判断”，不要为了填满图表而生成 0。不要给出医疗诊断或替代医生意见。严格只返回 JSON，不要 Markdown。必须同时返回 compact（适合统计首页的精简版）和 detailed（适合二级页面的详细版），结构如下：{compact:{summary:string,dataNote:string,score:{value:number|null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:number|null,unit:string,note:string,progress:number|null}],trend:{title:string,unit:string,labels:string[],values:(number|null)[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]},detailed:{overview:string,coverage:{period:string,included:string[],missing:string[]},highlights:[{title:string,detail:string,basis:string,metricKey?:"training"|"sleep"|"nutrition"|"habits"|"body"}],metricDetails:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",title:string,value:number|null,unit:string,interpretation:string,evidence:string,progress:number|null}],trends:[{title:string,unit:string,labels:string[],values:(number|null)[]}],nextSteps:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}],cautions:string[]}}。score.value、metrics.progress 和 metricDetails.progress 只有数据足够时填写 0-100，否则为 null。所有 trend 的 labels 与 values 长度一致，不存在的数据用 null。compact.summary 限 1–2 句；compact.suggestions 最多 2 条，正文简洁且明确可执行。所有给用户看的文字必须是自然中文，禁止输出内部字段名、变量路径、调试信息或 key=value（例如 training.completedSessions=2）。evidence 与 interpretation 不得重复。每条建议和证据必须引用真实数据维度；不要输出任何未在输入中出现的数值。' },
+    { role: 'system', content: '你是 FitTrack 的训练分析助手。输入包含用户所选区间内的训练、睡眠、饮食、体重体脂、习惯与目标汇总；体重/体脂序列只包含真实记录点。只基于输入事实写谨慎、实用的中文解读，不做医疗诊断。严格只返回 JSON，不要 Markdown，必须同时返回 compact 与 detailed 两个版本，结构为：{compact:{summary:string,dataNote:string,score:{value:null,label:string,basis:string},metrics:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",label:string,value:null,unit:string,note:string,progress:null}],trend:{title:string,unit:"%",labels:[],values:[]},strengths:string[],suggestions:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}]},detailed:{overview:string,coverage:{period:string,included:[],missing:[]},highlights:[{title:string,detail:string,basis:string,metricKey?:"training"|"sleep"|"nutrition"|"habits"|"body"}],metricDetails:[{key:"training"|"sleep"|"nutrition"|"habits"|"body",title:string,value:null,unit:string,interpretation:string,evidence:string,progress:null}],trends:[],nextSteps:[{title:string,body:string,basis:string,priority:"high"|"medium"|"low"}],cautions:string[]}}。所有数值、指标卡、完成度、图表标签与图表点由应用按原始记录确定；你必须将数值字段设为 null、compact.trend 与 detailed.trends 留空，禁止生成/推算任何数值序列、日期点或统计值。叙述中不要引入输入未明确给出的数字、日期或数量；如果依据不足，明确说“暂无数据”或“无法判断”。compact.summary 限 1–2 句；compact.suggestions 最多 2 条且可执行。不得输出内部字段名、变量路径或调试信息。evidence 与 interpretation 不得重复。' },
     { role: 'user', content: JSON.stringify(data) },
   ], 0.2);
-  const result = normalizeTrainingAnalysis(parseAiJson<unknown>(text));
+  const result = bindTrainingAnalysisToSourceData(parseAiJson<unknown>(text), data);
   if (!result.compact.summary || !result.compact.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
   return result;
 }

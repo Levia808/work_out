@@ -102,11 +102,12 @@ export function StatsPage() {
       setAnalysisError('请先在设置中填写千问或 DeepSeek API Key。');
       return;
     }
+    const sourceData = getTrainingAnalytics(selectedMode.days);
     const job = createAiJob({ kind: 'training-analysis', provider: provider.provider, inputSummary: analysisInput, status: 'submitting' });
     setAnalyzing(true);
     try {
       updateAiJob(job.id, { status: 'generating' });
-      const result = await analyzeTraining(provider.provider, provider.apiKey, getTrainingAnalytics(selectedMode.days));
+      const result = await analyzeTraining(provider.provider, provider.apiKey, sourceData);
       updateAiJob(job.id, { status: 'succeeded', result, retryable: false, error: undefined });
     } catch (error) {
       const message = error instanceof Error ? error.message : '分析失败，请稍后重试。';

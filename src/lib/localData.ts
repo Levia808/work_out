@@ -133,7 +133,17 @@ export type TrainingAnalytics = {
   };
   sleep: { loggedDays: number; avgHours?: number; goalRate?: number; goalHours?: number };
   nutrition: { loggedDays: number; avgKcal?: number; avgProtein?: number; avgCarbs?: number; avgFat?: number; calorieGoal?: number };
-  body: { loggedDays: number; latestWeightKg?: number; weightChangeKg?: number; latestBodyFatPercent?: number; bodyFatChangePercent?: number; targetWeightKg?: number };
+  body: {
+    loggedDays: number;
+    latestWeightKg?: number;
+    weightChangeKg?: number;
+    latestBodyFatPercent?: number;
+    bodyFatChangePercent?: number;
+    targetWeightKg?: number;
+    /** Exact user-entered measurement points; AI-generated points are never rendered. */
+    weightSeries: Array<{ date: string; value: number }>;
+    bodyFatSeries: Array<{ date: string; value: number }>;
+  };
   habits: { habitCount: number; completedLogs: number; completionRate?: number; currentStreaks: Array<{ name: string; days: number }> };
   goals: { calorieGoal?: number; sleepGoalHours?: number; targetWeightKg?: number };
   missingData: string[];
@@ -207,7 +217,16 @@ export function getTrainingAnalytics(days = 28): TrainingAnalytics {
     training: { plannedSessions, completedSessions: completedSessions.length, completionRate, sessions: sessions.length, completedSets, totalVolume: Math.round(totalVolume), exerciseStats: [...exerciseMap.values()].sort((a, b) => b.volume - a.volume) },
     sleep: { loggedDays: sleepLogs.length, avgHours: avgSleepHours, goalRate: sleepGoalRate, goalHours: sleepGoalHours },
     nutrition: { loggedDays: mealDays, avgKcal: mealAverage('kcal'), avgProtein: mealAverage('protein'), avgCarbs: mealAverage('carbs'), avgFat: mealAverage('fat'), calorieGoal: settings.calorieGoal },
-    body: { loggedDays: bodyMetrics.length, latestWeightKg, weightChangeKg, latestBodyFatPercent, bodyFatChangePercent, targetWeightKg: settings.targetWeightKg },
+    body: {
+      loggedDays: bodyMetrics.length,
+      latestWeightKg,
+      weightChangeKg,
+      latestBodyFatPercent,
+      bodyFatChangePercent,
+      targetWeightKg: settings.targetWeightKg,
+      weightSeries: bodyMetrics.flatMap(metric => metric.weightKg === undefined ? [] : [{ date: metric.measuredOn, value: metric.weightKg }]),
+      bodyFatSeries: bodyMetrics.flatMap(metric => metric.bodyFatPercent === undefined ? [] : [{ date: metric.measuredOn, value: metric.bodyFatPercent }]),
+    },
     habits: { habitCount: activeHabitCount, completedLogs: completedHabitLogs, completionRate: habitCompletionRate, currentStreaks },
     goals: { calorieGoal: settings.calorieGoal, sleepGoalHours, targetWeightKg: settings.targetWeightKg },
     missingData,
