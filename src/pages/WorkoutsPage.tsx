@@ -8,7 +8,7 @@ import { PhotoSourcePicker } from '../components/PhotoSourcePicker';
 import { RingProgress } from '../components/CircularMetric';
 import { analyzeTrainingPlanImage, getAnalysisProvider } from '../lib/ai';
 import { createAiJob, getLatestAiJob, updateAiJob, type AiJob } from '../lib/aiJobs';
-import { createPlan, createPlanFromImport, formatWeekday, getPlans, getSettings, habitHeatmap, planProgress, weekModeLabel } from '../lib/localData';
+import { createPlan, createPlanFromImport, formatWeekday, getPlans, getSettings, habitHeatmap, isPreviewMode, planProgress, weekModeLabel } from '../lib/localData';
 import type { WeekMode, WorkoutPlanImport } from '../lib/types';
 
 const planSchema = z.object({
@@ -41,6 +41,7 @@ export function WorkoutsPage() {
   }, []);
 
   const visiblePlans = useMemo(() => filter === 'all' ? plans : plans.filter(plan => String(plan.weekday) === filter), [filter, plans]);
+  const previewQuery = isPreviewMode() ? '?demo=1' : '';
 
   const save = () => {
     const result = planSchema.safeParse(form);
@@ -75,7 +76,7 @@ export function WorkoutsPage() {
       setPlans(getPlans());
       setPhotoStatus('success');
       setImportStatus(`已导入「${plan.title}」，共 ${plan.items.length} 个动作。`);
-      navigate(`/workouts/${plan.id}`);
+      navigate(`/workouts/${plan.id}${previewQuery}`);
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : '训练计划导入失败，请换一张更清晰的图片。';
       setImportJob(updateAiJob(job.id, { status: 'failed', error: message, retryable: true }) as AiJob<WorkoutPlanImport>);
@@ -117,7 +118,7 @@ export function WorkoutsPage() {
       </section> : null}
 
       <div className="segmented-control" role="tablist" aria-label="训练日筛选">{[['all', '全部'], ...[0, 1, 2, 3, 4, 5, 6].map(day => [String(day), formatWeekday(day)])].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'selected' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div>
-      {visiblePlans.length ? visiblePlans.map(plan => <Link to={`/workouts/${plan.id}`} className="card workout-plan-card" key={plan.id}><div className="row-start"><RingProgress value={planProgress(plan)} label={`${plan.title}进度`} size="small" /><div className="list-content"><h2 className="card-title">{plan.title}</h2><p className="card-copy">{formatWeekday(plan.weekday)} · {weekModeLabel(plan.weekMode)} · {plan.items.length || '暂无'} 个动作</p></div><ChevronRight size={19} className="muted" /></div><div className="row workout-plan-meta"><span className="muted">{plan.active ? '已启用' : '已停用'}</span><span className="row muted" title="查看动作" aria-label="查看动作"><Dumbbell size={16} /></span></div></Link>) : <section className="card empty-state"><Repeat2 size={26} className="muted" /><h2 className="card-title">还没有训练计划</h2><p className="card-copy">先建立一个计划，再把动作和检查项补齐。</p><button className="primary-btn" type="button" onClick={() => setShowForm(true)}>新建训练计划</button></section>}
+      {visiblePlans.length ? visiblePlans.map(plan => <Link to={`/workouts/${plan.id}${previewQuery}`} className="card workout-plan-card" key={plan.id}><div className="row-start"><RingProgress value={planProgress(plan)} label={`${plan.title}进度`} size="small" /><div className="list-content"><h2 className="card-title">{plan.title}</h2><p className="card-copy">{formatWeekday(plan.weekday)} · {weekModeLabel(plan.weekMode)} · {plan.items.length || '暂无'} 个动作</p></div><ChevronRight size={19} className="muted" /></div><div className="row workout-plan-meta"><span className="muted">{plan.active ? '已启用' : '已停用'}</span><span className="row muted" title="查看动作" aria-label="查看动作"><Dumbbell size={16} /></span></div></Link>) : <section className="card empty-state"><Repeat2 size={26} className="muted" /><h2 className="card-title">还没有训练计划</h2><p className="card-copy">先建立一个计划，再把动作和检查项补齐。</p><button className="primary-btn" type="button" onClick={() => setShowForm(true)}>新建训练计划</button></section>}
       <Heatmap points={habitHeatmap()} />
     </div>
   </AppShell>;

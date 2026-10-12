@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { ExerciseGlyph } from '../components/ExerciseGlyph';
 import { matchExercisePreset } from '../lib/exerciseCatalog';
-import { createSession, finishSession, getActiveSession, getPlan, saveWorkoutSet } from '../lib/localData';
+import { createSession, finishSession, getActiveSession, getPlan, isPreviewMode, saveWorkoutSet } from '../lib/localData';
 import type { WorkoutPlan, WorkoutSession } from '../lib/types';
 
 type Draft = { weightKg: string; reps: string; completed: boolean };
@@ -18,7 +18,7 @@ function encouragementFor(setNumber: number) {
 }
 
 export function WorkoutSessionPage() {
-  const { planId = '' } = useParams();
+  const { planId = '' } = useParams(); const previewQuery = isPreviewMode() ? '?demo=1' : '';
   const navigate = useNavigate();
   const [plan] = useState<WorkoutPlan | undefined>(() => getPlan(planId));
   const [session, setSession] = useState<WorkoutSession | undefined>(() => getActiveSession(planId) ?? (plan ? createSession(plan.id) : undefined));
@@ -46,7 +46,7 @@ export function WorkoutSessionPage() {
   const doneSetCount = session?.sets.filter(set => set.completed).length ?? 0;
 
   if (!plan || !session) {
-    return <AppShell title="训练记录" actions={false}><section className="card empty-state"><p className="card-copy">找不到训练计划。</p><Link className="primary-btn" to="/workouts">返回训练</Link></section></AppShell>;
+    return <AppShell title="训练记录" actions={false}><section className="card empty-state"><p className="card-copy">找不到训练计划。</p><Link className="primary-btn" to={`/workouts${previewQuery}`}>返回训练</Link></section></AppShell>;
   }
 
   const updateDraft = (key: string, next: Partial<Draft>) => {
@@ -90,11 +90,11 @@ export function WorkoutSessionPage() {
     setSaved(key);
     window.setTimeout(() => setSaved(current => current === key ? '' : current), 900);
   };
-  const finish = () => { finishSession(session.id); navigate(`/workouts/${plan.id}`); };
+  const finish = () => { finishSession(session.id); navigate(`/workouts/${plan.id}${previewQuery}`); };
 
   return <AppShell title="进行训练" subtitle={`${plan.title} · ${doneSetCount}/${allSetCount} 组`} actions={false}>
     <div className="stack workout-session-page">
-      <Link to={`/workouts/${plan.id}`} className="muted row back-link"><ChevronLeft size={17} aria-hidden="true" />返回计划</Link>
+      <Link to={`/workouts/${plan.id}${previewQuery}`} className="muted row back-link"><ChevronLeft size={17} aria-hidden="true" />返回计划</Link>
       {plan.items.map(item => {
         const exercise = plan.exercises.find(candidate => candidate.id === item.exerciseId);
         if (!exercise) return null;

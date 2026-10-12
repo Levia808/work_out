@@ -1736,3 +1736,182 @@ button:focus-visible,
     text-align: left;
   }
 }
+
+/* --- Final mobile alignment pass ------------------------------------------------
+   One restrained layer for the shared shell. It deliberately only adjusts
+   spacing, text measure, and empty-state hierarchy; feature behavior stays
+   owned by the existing components above. */
+:root {
+  --app-gutter: 16px;
+  --card-radius: 22px;
+  --control-radius: 14px;
+  --dock-gap: 12px;
+}
+
+.fit-shell {
+  padding-left: max(var(--app-gutter), env(safe-area-inset-left));
+  padding-right: max(var(--app-gutter), env(safe-area-inset-right));
+  padding-bottom: calc(144px + env(safe-area-inset-bottom));
+}
+
+.card {
+  border-radius: var(--card-radius);
+}
+
+.card-title,
+.card-copy,
+.list-title,
+.list-meta,
+.eyebrow,
+.section-count,
+button,
+label {
+  overflow-wrap: anywhere;
+}
+
+.card-copy,
+.list-meta,
+.fit-subtitle {
+  max-width: 46ch;
+}
+
+.row {
+  align-items: center;
+}
+
+.row-start {
+  align-items: flex-start;
+}
+
+.primary-btn,
+.secondary-btn {
+  min-height: 48px;
+  border-radius: var(--control-radius);
+}
+
+.primary-btn > span,
+.secondary-btn > span {
+  min-width: 0;
+}
+
+.input-field,
+.history-select-wrap select {
+  min-height: 46px;
+  border-radius: var(--control-radius);
+}
+
+.segmented-control {
+  gap: 5px;
+}
+
+.segmented-control button {
+  min-height: 42px;
+  border-radius: 12px;
+  letter-spacing: -.015em;
+}
+
+.bottom-nav {
+  width: min(560px, calc(100% - 24px));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  border-radius: 22px;
+}
+
+.empty-number {
+  color: #d4d4d8;
+  font-size: clamp(2.1rem, 9vw, 2.8rem) !important;
+  letter-spacing: -.055em;
+}
+
+.stats-overview-grid .metric-card {
+  min-height: 132px;
+}
+
+.stats-overview-grid .metric-card .card-copy,
+.stats-progress-grid .card .card-copy {
+  min-height: 2.7em;
+}
+
+.empty-chart,
+.ai-empty-state {
+  min-height: 84px;
+  align-content: center;
+}
+
+.record-link-card,
+.report-history-entry {
+  min-width: 0;
+}
+
+.settings-action {
+  min-width: 0;
+}
+
+.settings-action .list-content {
+  min-width: 0;
+}
+
+@media (max-width: 430px) {
+  .fit-shell {
+    padding-left: max(var(--app-gutter), env(safe-area-inset-left));
+    padding-right: max(var(--app-gutter), env(safe-area-inset-right));
+  }
+
+  .fit-header {
+    margin-top: 22px;
+    margin-bottom: 18px;
+  }
+
+  .card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .stack,
+  .dashboard-page,
+  .stats-page {
+    gap: 10px;
+  }
+
+  .metric-card-main {
+    align-items: center;
+  }
+
+  .metric-card .card-copy {
+    max-width: 18ch;
+  }
+
+  .stats-overview-grid .metric-card,
+  .stats-progress-grid .card {
+    min-height: 132px;
+  }
+
+  .bottom-nav {
+    width: min(560px, calc(100% - 24px));
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .fit-shell {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .card {
+    padding: 15px;
+  }
+
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .segmented-control {
+    gap: 4px;
+  }
+
+  .segmented-control button {
+    padding-inline: 2px;
+    font-size: .72rem;
+  }
+}
