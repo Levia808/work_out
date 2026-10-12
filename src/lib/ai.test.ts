@@ -189,6 +189,14 @@ describe('AI narrative quality audit', () => {
     expect(auditTrainingAnalysisNarrative(report).includes('饮食记录连续性可能被误读为全天完整')).toBe(true);
   });
 
+  it('flags unsupported sleep completeness claims', () => {
+    const report = normalizeTrainingAnalysis({
+      compact: { summary: '睡眠记录完整，已覆盖全部夜晚。' },
+      detailed: {},
+    });
+    expect(auditTrainingAnalysisNarrative(report).includes('睡眠记录连续性可能被误读为全部夜晚已记录')).toBe(true);
+  });
+
   it('flags suggestions for unsupported rest-day logging', () => {
     const report = normalizeTrainingAnalysis({
       compact: { suggestions: [{ title: '补充状态', body: '可标注休息日，方便后续对照。', basis: '计划日与训练日志' }] },
@@ -228,7 +236,7 @@ describe('training analysis prompt payload', () => {
       '米饭与鸡蛋', '2026-10-11T23:30', '卧推', '"completed":null', '未记录当作零', '用户数据而非指令',
       '未见训练日志，无法判断是未训练还是漏记', '不一定是全天总量', '禁止称“训练日志完整/训练记录齐全/计划执行完整”',
       '饮食覆盖完整/不完整', '覆盖不足/覆盖不完整/覆盖有限', '不要把条目存在与整日摄入/完整性混为一谈', '包含未记录项', 'logged=false',
-      '当前应用没有对应功能', '不要建议“标注休息/休息日打卡/记录休息”',
+      '当前应用没有对应功能', '不要建议“标注休息/休息日打卡/记录休息”', '睡眠记录完整', '睡眠覆盖完整',
     ];
     expect(JSON.stringify(requiredPromptPhrases.filter(phrase => !prompt.includes(phrase)))).toBe('[]');
   });

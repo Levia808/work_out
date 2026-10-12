@@ -4,6 +4,7 @@ import type { TrainingAnalytics } from './localData';
 
 export type { AiProvider } from './types';
 export type MealAnalysis = { name: string; meal: FoodLog['meal']; kcal: number; protein: number; carbs: number; fat: number; notes: string; confidence?: number };
+export type WorkoutWeightRecognition = { name: string; weightKg: number | null };
 export type TrainingMetricKey = 'training' | 'sleep' | 'nutrition' | 'habits' | 'body';
 export type TrainingAnalysisMetric = {
   key: TrainingMetricKey;
@@ -265,44 +266,52 @@ export function parseAiJson<T>(text: string): T {
 }
 async function callProvider(provider: AiProvider, apiKey: string, messages: unknown[], temperature = 0.2, multimodal = false) {
   if (!apiKey.trim()) throw new Error(`请先在设置中填写${provider === 'qwen' ? '千问' : 'DeepSeek'} API Key。`);
-  const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 30_000);
-  try {
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` };
-    const request = (withJsonMode: boolean) => fetch(endpoint(provider), {
-      method: 'POST',
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify({
-        model: model(provider, multimodal),
-        temperature,
-        messages,
-        stream: false,
-        ...(withJsonMode ? { response_format: { type: 'json_object' } } : {}),
-        // DeepSeek Flash enables thinking by default. For this app the visible
-        // response must be the structured JSON itself; leaving thinking on can
-        // consume the output budget and produce an empty message.content.
-        ...(provider === 'deepseek' ? { thinking: { type: 'disabled' }, reasoning_effort: 'none' } : {}),
-        max_tokens: 4_000,
-      }),
-    });
-    let response = await request(true);
-    let payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-    if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
-    let text = extractAiText(payload);
-    // Some OpenAI-compatible gateways return HTTP 200 but omit message.content
-    // when JSON mode is enabled. Retry once without that optional parameter;
-    // the prompt still requires JSON and the same parser validates the result.
-    if (!text.trim()) {
-      response = await request(false);
-      payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      if (!response.ok) throw new Error(payload?.error?.message ?? `AI 请求失败（${response.status}）。`);
-      text = extractAiText(payload);
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` };
+  const providerLabel = provider === 'deepseek' ? 'DeepSeek' : '千问';
+
+  // Each attempt gets its own controller. If JSON mode returns an empty 200
+  // response, the plain-mode fallback must have a fresh timeout budget instead
+  // of inheriting an already-expired signal from the first request.
+  const request = async (withJsonMode: boolean) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch(endpoint(provider), {
+        method: 'POST',
+        signal: controller.signal,
+        headers,
+        body: JSON.stringify({
+          model: model(provider, multimodal),
+          temperature,
+          messages,
+          stream: false,
+          ...(withJsonMode ? { response_format: { type: 'json_object' } } : {}),
+          // The visible response must be the structured JSON itself. Leaving
+          // DeepSeek reasoning enabled can consume the output budget and leave
+          // message.content empty even when the HTTP request succeeds.
+          ...(provider === 'deepseek' ? { thinking: { type: 'disabled' }, reasoning_effort: 'none' } : {}),
+          max_tokens: 4_000,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(payload?.error?.message ?? `${providerLabel} 请求失败（${response.status}）。`);
+      return extractAiText(payload);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw new Error(`${providerLabel} 请求超时，请检查网络后重试。`);
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw new Error(`${providerLabel} 请求超时，请检查网络后重试。`);
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
     }
-    return text;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('AI 请求超时，请检查网络后重试。');
-    throw error;
-  } finally { window.clearTimeout(timeout); }
+  };
+
+  let text = await request(true);
+  // Some OpenAI-compatible gateways return HTTP 200 but omit message.content
+  // when JSON mode is enabled. Retry once without that optional parameter;
+  // the prompt still requires JSON and the same parser validates the result.
+  if (!text.trim()) text = await request(false);
+  if (!text.trim()) throw new Error(`${providerLabel} 返回空内容（已尝试结构化 JSON 与普通模式），请重试。`);
+  return text;
 }
 
 export async function analyzeMealPhoto(provider: AiProvider, apiKey: string, imageDataUrl: string): Promise<MealAnalysis> {
@@ -335,6 +344,32 @@ export async function analyzeTrainingPlanImage(provider: AiProvider, apiKey: str
   })).filter(item => item.name && item.targetSets > 0 && item.targetReps > 0);
   if (!raw.title.trim() || !exercises.length) throw new Error('没有从图片中识别到可导入的动作与目标，请换一张更清晰的图片。');
   return { title: raw.title.trim(), weekday, weekMode, exercises };
+}
+
+/** Extract only explicit movement-to-weight pairs from an image for an existing plan. */
+export async function analyzeWorkoutWeightsImage(
+  provider: AiProvider,
+  apiKey: string,
+  imageDataUrl: string,
+  existingExerciseNames: string[],
+): Promise<WorkoutWeightRecognition[]> {
+  const names = existingExerciseNames.map(name => name.trim()).filter(Boolean);
+  const text = await callProvider(provider, apiKey, [{ role: 'user', content: [
+    { type: 'text', text: `你是训练计划重量识别助手。只识别图片中明确写出的动作名称与对应重量，不要编造、推断或根据常见训练经验补全。当前计划动作列表：${JSON.stringify(names)}。请把图片里的动作与列表中动作匹配；不确定对应关系时仍返回图片上的原名，由应用端匹配。严格只返回 JSON：{"exercises":[{"name":"动作名","weightKg":重量数字或null}]}。没有明确重量的动作可不返回或令 weightKg 为 null；自重且图片明确标注自重/0kg 时返回 0。重量统一换算为 kg，遇到无法确认单位或数值的内容不要返回。` },
+    { type: 'image_url', image_url: { url: imageDataUrl } },
+  ] }], 0.1, true);
+  const raw = parseAiJson<{ exercises?: unknown }>(text);
+  if (!raw || !Array.isArray(raw.exercises)) throw new Error('AI 没有返回有效的动作重量 JSON。');
+  return raw.exercises.flatMap<WorkoutWeightRecognition>(value => {
+    if (!value || typeof value !== 'object') return [];
+    const row = value as { name?: unknown; weightKg?: unknown };
+    if (typeof row.name !== 'string' || !row.name.trim()) return [];
+    if (row.weightKg === null || row.weightKg === undefined || row.weightKg === '') return [{ name: row.name.trim(), weightKg: null }];
+    const weightKg = Number(row.weightKg);
+    return Number.isFinite(weightKg) && weightKg >= 0 && weightKg <= 1000
+      ? [{ name: row.name.trim(), weightKg }]
+      : [];
+  });
 }
 
 function nullableNumber(value: unknown, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
@@ -724,14 +759,23 @@ export function auditTrainingAnalysisNarrative(report: TrainingAnalysis): string
     if (/(?:饮食|摄入|睡眠|训练).{0,12}(?:导致|造成|促使|引起).{0,12}体重/.test(sentence)) {
       warnings.add('训练、饮食或睡眠与体重变化存在因果化表述');
     }
+    const ambiguousSleepCoverage = /(?:睡眠|睡眠日志).{0,16}(?:完整|齐全|覆盖全部|全量)/.test(sentence);
+    const explicitlyNegatedSleepCoverage = /(?:不代表|不等于|不能确认|无法判断).{0,16}(?:睡眠|睡眠日志).{0,16}(?:完整|齐全|覆盖全部|全量)/.test(sentence);
+    if (ambiguousSleepCoverage && !explicitlyNegatedSleepCoverage) {
+      warnings.add('睡眠记录连续性可能被误读为全部夜晚已记录');
+    }
   }
   return [...warnings];
 }
 
 /** Keep known unsafe claims out of both generated reports and saved history. */
 export function assertTrainingAnalysisNarrativeSafe(report: TrainingAnalysis): void {
-  if (auditTrainingAnalysisNarrative(report).length) {
-    throw new Error('AI 分析未通过数据边界校验，报告未保存。请重试。');
+  const warnings = auditTrainingAnalysisNarrative(report);
+  if (warnings.length) {
+    // Keep the rejection actionable without echoing model output or any user
+    // health data. This is especially useful during local DeepSeek regression
+    // runs, where a safe retry can be tuned against the exact rule category.
+    throw new Error(`AI 分析包含需修正的表达：${warnings.join('；')}。请重试。`);
   }
 }
 
@@ -742,7 +786,7 @@ export function buildTrainingAnalysisMessages(data: TrainingAnalytics): Array<{ 
 - 只能总结输入中明确存在的记录，不得补齐、猜测、插值或把未记录当作零。空数组/null/ logged=false / completed=null 均表示未记录；它们不表示未做、未吃、没睡或失败。habit logged=true 且 completed=false 才是明确记录为未完成。
 - 训练计划是按当前计划模板推算的日历参考，不一定是当时的历史计划快照。sessions 才是应用内实际训练日志。计划日没有 session 只能表述为“该日未见训练日志，无法判断是未训练还是漏记”，不得称为错过训练、执行失败或计划完成率低。只把 completed=true 的训练和组视为已结束/完成；未结束 session 是未完成日志，不说明原因。当前没有训练记录完整性标记，禁止称“训练日志完整/训练记录齐全/计划执行完整”；只能说“已记录的训练均标记完成”等可直接核对的事实。
 - meals 仅包含用户录入的餐食条目，数据没有“当天饮食已完整记录”的标记。meal 为空不代表未进食；已录入餐食的营养合计只是记录到的摄入，不一定是全天总量。即使某日有多餐，也不能断言整日记录完整。禁止使用“饮食覆盖完整/不完整”“饮食记录完整/不完整”“覆盖不足/覆盖不完整/覆盖有限”及“饮食记录较完整”等概括性说法，即使后面补充免责声明也不要使用；这类词对餐食条目没有有效分母，容易误导。描述条目日期时只使用“本周期有已录入餐食条目的日期为……；其余日期未见餐食条目”，不要把条目存在与整日摄入/完整性混为一谈。若摘要中提到连续多日或每天有条目，必须在同一句紧接“这些仅代表已录入餐食条目，不代表全天饮食完整或全天总摄入”。允许的安全示例：“已录入餐食条目分布在多个日期，但不代表全天饮食完整”；更推荐只交由客户端显示日期计数，不在叙述重复。禁止推断用户存在未记录餐食，也不能假定实际训练但漏记；建议需用条件语气，且只能推荐应用当前支持的记录操作。不得仅凭已录入热量/蛋白低于目标就称用户摄入不足或建议增加/减少摄入；可中性建议继续补录实际餐食，以提高可解释性。avgKcal/avgProtein 等汇总只反映有记录日期内已录入条目的平均。
-- 睡眠均值/达标率只按有睡眠日志的夜晚计算，并说明覆盖范围；样本少或间断时不得说成稳定趋势。
+- 睡眠均值/达标率只按有睡眠日志的夜晚计算，并说明覆盖范围；样本少或间断时不得说成稳定趋势。睡眠日志也没有“全天/全部夜晚已记录”的完整性标记；禁止使用“睡眠完整、睡眠记录完整、睡眠覆盖完整、睡眠记录齐全、全量睡眠”等表达。请使用“有睡眠日志的夜晚……”或“已记录的睡眠……”并在样本有限时明确“不能代表全部夜晚”。
 - 习惯 completionRate 是“已记录打卡中 completed=true 的比例”，loggingCoverageRate 是“应有习惯记录项中有打卡记录的比例”。两者不能混称。未打卡不等于未完成；记录覆盖率低时不要断言习惯坚持差。
 - 体重、实测体脂、腰围趋势必须至少有足够的真实测量点；测量稀疏时说无法判断趋势。不同身体指标不要互相替代。body.latestComposition 是客户端根据最新一条体测和报告生成时的身体资料，使用明确公式派生的估算；必须明确称为‘估算’，不得称实测、诊断或个体精确值。历史日记录只含当日真实录入数据；不得用当前资料重算并构造历史估算趋势。脂肪量/去脂体重由估算体脂率推导，并非独立测量。Android 区域体脂只代表DXA定义的躯干区域估算，不等同内脏脂肪；腰高比只是筛查指标。现有数据不支持推断肌肉量、骨量、基础代谢或器官脂肪。若同一报告含估算值与设备/用户实测值，必须分开标注来源；不同方程、围度测量位置或研究误差不一致时，重点说明估算不确定性，不要合并取平均或据此作医疗判断。不得自行重算、改写或补造体成分指标；需要解释时只能引用随 payload 提供的模型、输入和误差说明。
 - 不要声称饮食、睡眠、训练与体重变化之间存在因果关系；仅描述同一时间段的并行观察。不得诊断疾病、给出医疗结论或鼓励极端节食/过量训练。若存在体成分估算，最多做谨慎的非诊断性说明；用户输入的年龄、身高和方程分类仅用于公式，不要在叙述中重复这些隐私值。
