@@ -609,9 +609,63 @@ export function bindTrainingAnalysisToSourceData(input: unknown, data: TrainingA
         };
       }),
       trends: measurementTrends,
-      cautions: [...new Set([...generated.detailed.cautions, ...(data.missingData.length ? [`当前区间缺少${data.missingData.join('、')}数据，相关分析不作推断。`] : [])])],
+      cautions: [...new Set([
+        ...generated.detailed.cautions,
+        ...(data.training.plannedSessions > 0 ? ['训练计划按当前模板推算，不是历史计划快照；计划日没有训练日志不能说明漏练。'] : []),
+        ...(data.nutrition.loggedDays > 0 ? ['餐食条目只代表已录入内容；当前数据没有全天饮食完整性标记。'] : []),
+        ...(data.habits.habitCount > 0 ? ['未打卡表示没有打卡记录；只有明确标记未完成的已记录打卡才表示未完成。'] : []),
+        ...(data.missingData.length ? [`当前区间缺少${data.missingData.join('、')}数据，相关分析不作推断。`] : []),
+      ])],
     },
   };
+}
+
+/**
+ * Lightweight regression audit for high-risk overclaims in model prose. Source
+ * values are separately bound client-side; this only flags unsupported wording.
+ */
+export function auditTrainingAnalysisNarrative(report: TrainingAnalysis): string[] {
+  const prose = [
+    report.compact.summary,
+    ...report.compact.strengths,
+    ...report.compact.suggestions.flatMap(item => [item.title, item.body, item.basis]),
+    report.detailed.overview,
+    ...report.detailed.highlights.flatMap(item => [item.title, item.detail, item.basis]),
+    ...report.detailed.metricDetails.flatMap(item => [item.interpretation, item.evidence]),
+    ...report.detailed.nextSteps.flatMap(item => [item.title, item.body, item.basis]),
+    ...report.detailed.cautions,
+  ];
+  const warnings = new Set<string>();
+  for (const sentence of prose.flatMap(text => text.split(/[。！？\n]+/)).map(text => text.trim()).filter(Boolean)) {
+    if (/(?:训练|运动).{0,10}(?:日志|记录).{0,4}(?:完整|齐全|全量)/.test(sentence)) {
+      warnings.add('训练记录完整性表述缺少数据来源');
+    }
+    // Flag the ambiguous shorthand the prompt explicitly bans even when the
+    // sentence later adds a separate caveat. Prefer exact logged-day counts.
+    const ambiguousMealCoverage = /(?:饮食|餐食).{0,16}(?:覆盖不完整|覆盖完整|记录完整|记录齐全)/.test(sentence);
+    const explicitlyNegatedMealCoverage = /(?:不代表|不等于|不能确认|无法判断).{0,16}(?:饮食|餐食).{0,16}(?:覆盖完整|记录完整|记录齐全)/.test(sentence);
+    if (ambiguousMealCoverage && !explicitlyNegatedMealCoverage) {
+      warnings.add('饮食记录连续性可能被误读为全天完整');
+    } else if (/(?:饮食|餐食|摄入).{0,22}(?:逐日|每天|每日|连续|完整|覆盖)/.test(sentence)
+      && !/(?:不代表|不等于|不能确认|无法判断|仅指|仅是|已录入内容|未必|没有.*完整性标记|无.*完整性标记)/.test(sentence)) {
+      warnings.add('饮食记录连续性可能被误读为全天完整');
+    }
+    if (/(?:摄入|饮食|餐食).{0,16}(?:不足|过低|偏低|低于目标|超标)/.test(sentence)
+      && !/(?:记录到|已录入|不代表|不能判断|无法确认|仅反映)/.test(sentence)) {
+      warnings.add('饮食目标结论超出已录入餐食可支持范围');
+    }
+    if (/(?:标注|记录|打卡|标记|设为).{0,8}休息(?:日)?|休息(?:日)?打卡/.test(sentence)) {
+      warnings.add('建议提及当前不支持的休息标记功能');
+    }
+    if (/计划.{0,12}(?:错过|漏练|未训练|执行失败)/.test(sentence)
+      && !/(?:无法判断|不能确认|不能说明|不能据此|未见训练日志)/.test(sentence)) {
+      warnings.add('将计划日缺失日志推断为未训练');
+    }
+    if (/(?:饮食|摄入|睡眠|训练).{0,12}(?:导致|造成|促使|引起).{0,12}体重/.test(sentence)) {
+      warnings.add('训练、饮食或睡眠与体重变化存在因果化表述');
+    }
+  }
+  return [...warnings];
 }
 
 export function buildTrainingAnalysisMessages(data: TrainingAnalytics): Array<{ role: 'system' | 'user'; content: string }> {
@@ -619,8 +673,8 @@ export function buildTrainingAnalysisMessages(data: TrainingAnalytics): Array<{ 
 
 事实口径（必须遵守）：
 - 只能总结输入中明确存在的记录，不得补齐、猜测、插值或把未记录当作零。空数组/null/ logged=false / completed=null 均表示未记录；它们不表示未做、未吃、没睡或失败。habit logged=true 且 completed=false 才是明确记录为未完成。
-- 训练计划是按当前计划模板推算的日历参考，不一定是当时的历史计划快照。sessions 才是应用内实际训练日志。计划日没有 session 只能表述为“该日未见训练日志，无法判断是未训练还是漏记”，不得称为错过训练、执行失败或计划完成率低。只把 completed=true 的训练和组视为已结束/完成；未结束 session 是未完成日志，不说明原因。
-- meals 仅包含用户录入的餐食条目，数据没有“当天饮食已完整记录”的标记。meal 为空不代表未进食；已录入餐食的营养合计只是记录到的摄入，不一定是全天总量。即使某日有多餐，也不能断言整日记录完整。不得仅凭已录入热量/蛋白低于目标就称用户摄入不足或建议增加/减少摄入；可中性建议继续补录实际餐食，以提高可解释性。avgKcal/avgProtein 等汇总只反映有记录日期内已录入条目的平均。
+- 训练计划是按当前计划模板推算的日历参考，不一定是当时的历史计划快照。sessions 才是应用内实际训练日志。计划日没有 session 只能表述为“该日未见训练日志，无法判断是未训练还是漏记”，不得称为错过训练、执行失败或计划完成率低。只把 completed=true 的训练和组视为已结束/完成；未结束 session 是未完成日志，不说明原因。当前没有训练记录完整性标记，禁止称“训练日志完整/训练记录齐全/计划执行完整”；只能说“已记录的训练均标记完成”等可直接核对的事实。
+- meals 仅包含用户录入的餐食条目，数据没有“当天饮食已完整记录”的标记。meal 为空不代表未进食；已录入餐食的营养合计只是记录到的摄入，不一定是全天总量。即使某日有多餐，也不能断言整日记录完整。禁止使用“饮食覆盖完整/不完整”“饮食记录完整/不完整”“覆盖不足/覆盖不完整/覆盖有限”及“饮食记录较完整”等概括性说法，即使后面补充免责声明也不要使用；这类词对餐食条目没有有效分母，容易误导。描述条目日期时只使用“本周期有已录入餐食条目的日期为……；其余日期未见餐食条目”，不要把条目存在与整日摄入/完整性混为一谈。若摘要中提到连续多日或每天有条目，必须在同一句紧接“这些仅代表已录入餐食条目，不代表全天饮食完整或全天总摄入”。允许的安全示例：“已录入餐食条目分布在多个日期，但不代表全天饮食完整”；更推荐只交由客户端显示日期计数，不在叙述重复。禁止推断用户存在未记录餐食，也不能假定实际训练但漏记；建议需用条件语气，且只能推荐应用当前支持的记录操作。不得仅凭已录入热量/蛋白低于目标就称用户摄入不足或建议增加/减少摄入；可中性建议继续补录实际餐食，以提高可解释性。avgKcal/avgProtein 等汇总只反映有记录日期内已录入条目的平均。
 - 睡眠均值/达标率只按有睡眠日志的夜晚计算，并说明覆盖范围；样本少或间断时不得说成稳定趋势。
 - 习惯 completionRate 是“已记录打卡中 completed=true 的比例”，loggingCoverageRate 是“应有习惯记录项中有打卡记录的比例”。两者不能混称。未打卡不等于未完成；记录覆盖率低时不要断言习惯坚持差。
 - 体重、体脂、腰围趋势必须至少有足够的真实测量点；测量稀疏时说无法判断趋势。不同身体指标不要互相替代。
@@ -629,14 +683,15 @@ export function buildTrainingAnalysisMessages(data: TrainingAnalytics): Array<{ 
 
 输出规则：
 - 所有指标数值、比例、日期标签和图表点由客户端绑定原始记录。score.value、metrics[].value/progress、metricDetails[].value/progress 必须为 null；compact.trend 的 labels/values 必须为空，detailed.trends 必须为空数组。不要输出指标数字或图表序列。
-- 所有叙述字段避免阿拉伯数字、百分比、具体日期和具体数量；客户端卡片会展示这些来源数值。定性结论必须有逐日记录支持，使用“记录显示/未见记录/样本有限”等准确措辞，不将缺失说成否定事实。
+- 所有叙述字段避免阿拉伯数字、百分比、具体日期和具体数量；客户端卡片会展示这些来源数值。定性结论必须有逐日记录支持，使用“记录显示/未见记录/样本有限”等准确措辞，不将缺失说成否定事实。提交前逐句复核，尤其检查每一处“覆盖、完整、连续、每日”等词：餐食数据不允许出现覆盖完整/不完整或记录完整/不完整等说法；要写条目分布，只能说明已录入条目出现在哪些日期，并明确不代表全天记录完整。若某句触犯事实口径，应删除该句或改写为“已录入餐食条目仅代表记录到的内容，无法据此判断全天摄入”。不能把已记录范围描述成数据完整，也不能把模板计划、已录入餐食或未打卡项升级成执行结论。
+- 建议只能引用应用当前确实支持的操作：记录/补录实际训练及训练组、记录餐食、睡眠、体测、习惯打卡，或编辑训练计划与目标。训练计划日没有训练日志时，最多建议“如果当天实际进行了训练，可补录训练日志”；不要建议“标注休息/休息日打卡/记录休息”，当前应用没有对应功能，也不要建议任何未列出的按钮或字段。信息不足时可不提供建议。
 - 信息不足时明确说“暂无记录”或“目前无法判断”。不要为了填满内容而猜测。建议简短、具体、温和且只针对可控记录行为；每条 suggestions/nextSteps 的 basis 引用可观察记录类型，不重复抄写数字。evidence 写客观依据，interpretation 写谨慎含义，二者不得重复。
 
 严格只返回一个有效 JSON 对象，不要 Markdown、代码围栏、前言或尾注。紧凑版：summary 一到两句，strengths 最多三条，suggestions 最多两条。详细版补充覆盖范围、亮点、指标解释、下一步和边界，避免重复紧凑版。没有可靠内容的数组返回空数组。JSON 结构：
 {"compact":{"summary":"","dataNote":"","score":{"value":null,"label":"不合并评分","basis":""},"metrics":[{"key":"training|sleep|nutrition|habits|body","label":"","value":null,"unit":"","note":"","progress":null}],"trend":{"title":"","unit":"","labels":[],"values":[]},"strengths":[],"suggestions":[{"title":"","body":"","basis":"","priority":"high|medium|low"}]},"detailed":{"overview":"","coverage":{"period":"","included":[],"missing":[]},"highlights":[{"title":"","detail":"","basis":"","metricKey":"training|sleep|nutrition|habits|body"}],"metricDetails":[{"key":"training|sleep|nutrition|habits|body","title":"","value":null,"unit":"","interpretation":"","evidence":"","progress":null}],"trends":[],"nextSteps":[{"title":"","body":"","basis":"","priority":"high|medium|low"}],"cautions":[]}}`;
   return [
     { role: 'system', content: system },
-    { role: 'user', content: `以下是所选区间的汇总与完整逐日记录。请严格按系统规则分析；逐日记录缺失的字段不得推断。\n${JSON.stringify(data)}` },
+    { role: 'user', content: `以下是所选区间的汇总与逐日数据（包含未记录项）。请严格按系统规则分析；空缺仅表示没有对应记录，不代表事实为零或记录完整性。\n${JSON.stringify(data)}` },
   ];
 }
 

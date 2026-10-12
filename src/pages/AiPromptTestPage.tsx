@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AppShell } from '../components/AppShell';
-import { analyzeTraining, getAnalysisProvider, type TrainingAnalysis } from '../lib/ai';
+import { analyzeTraining, auditTrainingAnalysisNarrative, getAnalysisProvider, type TrainingAnalysis } from '../lib/ai';
 import { countScenarioInputs, createRandomAiTestScenarios, type AiTestScenario } from '../lib/aiTestFixtures';
 import type { UserSettings } from '../lib/types';
 
-type RunResult = { scenario: AiTestScenario; result?: TrainingAnalysis; error?: string; elapsedMs: number; narrativeDigitCount: number; suggestionBasisRate: number; inputChars: number };
+type RunResult = { scenario: AiTestScenario; result?: TrainingAnalysis; error?: string; elapsedMs: number; narrativeDigitCount: number; suggestionBasisRate: number; narrativeWarnings: string[]; inputChars: number };
 function savedAiProvider() {
   try {
     const saved = localStorage.getItem('fittrack:settings');
@@ -50,10 +50,11 @@ export function AiPromptTestPage() {
           scenario, result, elapsedMs: Math.round(performance.now() - started),
           narrativeDigitCount: (narratives.match(/[0-9]/g) ?? []).length,
           suggestionBasisRate: basisItems.length ? Math.round(basisItems.filter(item => item.basis.trim()).length / basisItems.length * 100) : 100,
+          narrativeWarnings: auditTrainingAnalysisNarrative(result),
           inputChars,
         });
       } catch (error) {
-        nextResults.push({ scenario, error: safeError(error), elapsedMs: Math.round(performance.now() - started), narrativeDigitCount: 0, suggestionBasisRate: 0, inputChars });
+        nextResults.push({ scenario, error: safeError(error), elapsedMs: Math.round(performance.now() - started), narrativeDigitCount: 0, suggestionBasisRate: 0, narrativeWarnings: [], inputChars });
       }
       setResults([...nextResults]);
     }
@@ -65,7 +66,7 @@ export function AiPromptTestPage() {
     <div className="stack" style={{ gap: 12, paddingBottom: 24 }}>
       <section className="card stack">
         <h2 className="card-title">逐日全量数据回归</h2>
-        <p className="card-copy">当前服务：{provider?.provider === 'deepseek' ? 'DeepSeek' : provider?.provider === 'qwen' ? '千问' : '未配置'}。每轮随机生成完整训练、逐餐营养、睡眠、体测、习惯与目标数据；不访问应用真实记录，不保存 API 请求内容。</p>
+        <p className="card-copy">当前服务：{provider?.provider === 'deepseek' ? 'DeepSeek' : provider?.provider === 'qwen' ? '千问' : '未配置'}。每轮随机生成 28 天逐日训练、逐餐营养、睡眠、体测、习惯与目标数据，并包含有意空缺场景；不访问应用真实记录，不保存 API 请求内容。</p>
         <button className="primary-btn row" type="button" onClick={() => void run()} disabled={running || !provider}>
           <span>{running ? `正在测试 ${current}/3…` : '随机生成数据并运行 3 轮'}</span>
         </button>
@@ -83,7 +84,8 @@ export function AiPromptTestPage() {
             <div className="card stack"><h3 className="card-title">详细版观察</h3><p className="card-copy">{item.result.detailed.overview}</p>{item.result.detailed.metricDetails.map(metric => <p className="card-copy" key={metric.key}><strong>{metric.title}</strong>：{metric.interpretation} <span className="muted">{metric.evidence}</span></p>)}{item.result.detailed.cautions.map((text, textIndex) => <p className="card-copy" key={textIndex}>边界：{text}</p>)}
               <details><summary>查看结构化 JSON</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>{JSON.stringify(item.result, null, 2)}</pre></details>
             </div>
-            <p className="card-copy">自动检查：结构化报告已解析 · 客户端数值绑定完成 · 叙述中的阿拉伯数字 {item.narrativeDigitCount} 处 · 建议依据字段覆盖 {item.suggestionBasisRate}%</p>
+            <p className="card-copy">自动检查：结构化报告已解析 · 客户端数值绑定完成 · 叙述中的阿拉伯数字 {item.narrativeDigitCount} 处 · 建议依据字段覆盖 {item.suggestionBasisRate}% · 高风险措辞 {item.narrativeWarnings.length} 处</p>
+            {item.narrativeWarnings.map(warning => <p className="form-error" key={warning}>回归警告：{warning}</p>)}
           </> : null}
         </section>;
       })}
