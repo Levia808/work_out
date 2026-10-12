@@ -13,7 +13,7 @@ describe('AI provider selection', () => {
   });
 });
 
-import { parseAiJson } from './ai';
+import { buildTrainingAnalysisMessages, parseAiJson } from './ai';
 
 describe('AI JSON response parsing', () => {
   it('extracts JSON from markdown fences and leading prose', () => {
@@ -63,7 +63,7 @@ describe('training analysis presentation normalization', () => {
   it('replaces model-invented metric values and chart points with source records', () => {
     const source: TrainingAnalytics = {
       period: { days: 7, start: '2026-10-06', end: '2026-10-12' },
-      training: { plannedSessions: 2, completedSessions: 1, completionRate: 50, sessions: 1, completedSets: 4, totalVolume: 840, exerciseStats: [] },
+      training: { plannedSessions: 2, completedSessions: 1, recordedSessionCompletionRate: 50, sessions: 2, completedSets: 4, totalVolume: 840, exerciseStats: [] },
       sleep: { loggedDays: 3, avgHours: 7.75, goalRate: 67, goalHours: 8 },
       nutrition: { loggedDays: 2, avgKcal: 1160, avgProtein: 83, avgCarbs: 120, avgFat: 42, calorieGoal: 2000 },
       body: {
@@ -72,9 +72,10 @@ describe('training analysis presentation normalization', () => {
         weightSeries: [{ date: '2026-10-06', value: 71.8 }, { date: '2026-10-09', value: 71.5 }, { date: '2026-10-12', value: 71.2 }],
         bodyFatSeries: [{ date: '2026-10-06', value: 18.6 }, { date: '2026-10-12', value: 18.1 }],
       },
-      habits: { habitCount: 2, completedLogs: 5, completionRate: 36, currentStreaks: [] },
+      habits: { habitCount: 2, completedLogs: 5, loggedEntries: 14, loggingCoverageRate: 25, checkInCompletionRate: 36, currentStreaks: [] },
       goals: { calorieGoal: 2000, sleepGoalHours: 8, targetWeightKg: 68 },
       missingData: [],
+      dailyRecords: [],
     };
     const report = bindTrainingAnalysisToSourceData({
       compact: {
@@ -89,8 +90,12 @@ describe('training analysis presentation normalization', () => {
     }, source);
 
     expect(JSON.stringify(report.compact.metrics.find(metric => metric.key === 'body'))).toBe(JSON.stringify({ key: 'body', label: '体测', value: 71.2, unit: 'kg', note: '最新已记录体脂 18.1%', progress: null }));
-    expect(report.compact.score.value).toBe(53);
-    expect(!report.compact.trend.values.includes(-8.5)).toBe(true);
+    expect(report.compact.score.value).toBe(null);
+    expect(report.compact.score.label).toBe('不合并评分');
+    expect(JSON.stringify(report.compact.trend.values)).toBe('[]');
+    expect(Boolean(report.compact.metrics.find(metric => metric.key === 'training')?.note.includes('未记录不代表未训练'))).toBe(true);
+    expect(Boolean(report.compact.metrics.find(metric => metric.key === 'nutrition')?.note.includes('不代表全天总摄入'))).toBe(true);
+    expect(Boolean(report.compact.metrics.find(metric => metric.key === 'habits')?.note.includes('记录覆盖率 25%'))).toBe(true);
     expect(JSON.stringify(report.detailed.trends)).toBe(JSON.stringify([
       { title: '体重变化', unit: 'kg', labels: ['10-06', '10-09', '10-12'], values: [71.8, 71.5, 71.2] },
       { title: '体脂变化', unit: '%', labels: ['10-06', '10-12'], values: [18.6, 18.1] },
@@ -104,7 +109,7 @@ describe('training analysis presentation normalization', () => {
       training: { plannedSessions: 0, completedSessions: 0, sessions: 0, completedSets: 0, totalVolume: 0, exerciseStats: [] },
       sleep: { loggedDays: 0 }, nutrition: { loggedDays: 0 },
       body: { loggedDays: 0, weightSeries: [], bodyFatSeries: [] },
-      habits: { habitCount: 0, completedLogs: 0, currentStreaks: [] }, goals: {}, missingData: ['体重体测'],
+      habits: { habitCount: 0, completedLogs: 0, currentStreaks: [] }, goals: {}, missingData: ['体重体测'], dailyRecords: [],
     };
     const report = bindTrainingAnalysisToSourceData({
       compact: { summary: '暂无记录。', dataNote: '', metrics: [{ key: 'body', value: 99, unit: 'kg' }], trend: { title: '伪造', unit: 'kg', labels: ['今天'], values: [99] } },
@@ -136,5 +141,33 @@ describe('training analysis presentation normalization', () => {
     expect(report.compact.summary).toBe('睡眠记录接近目标。');
     expect(report.compact.suggestions.map(item => item.priority).join(',')).toBe('high,medium,low');
     expect(report.detailed.metricDetails[0].evidence).toBe('');
+  });
+});
+
+
+describe('training analysis prompt payload', () => {
+  it('sends complete day-level records and treats unlogged values as missing', () => {
+    const source: TrainingAnalytics = {
+      period: { days: 1, start: '2026-10-12', end: '2026-10-12' },
+      training: { plannedSessions: 1, completedSessions: 1, sessions: 1, completedSets: 1, totalVolume: 200, exerciseStats: [] },
+      sleep: { loggedDays: 1, avgHours: 7.5 }, nutrition: { loggedDays: 1, avgKcal: 500 },
+      body: { loggedDays: 0, weightSeries: [], bodyFatSeries: [] },
+      habits: { habitCount: 1, completedLogs: 1, currentStreaks: [] }, goals: {}, missingData: [],
+      dailyRecords: [{
+        date: '2026-10-12', plannedWorkouts: [],
+        sessions: [{ planTitle: '上肢', completed: true, sets: [{ exercise: '卧推', setNumber: 1, weightKg: 40, reps: 5, completed: true }] }],
+        meals: [{ meal: 'lunch', name: '米饭与鸡蛋', grams: 250, kcal: 500, protein: 24, carbs: 62, fat: 14, notes: '测试备注' }],
+        sleep: { fellAsleepAt: '2026-10-11T23:30', wokeAt: '2026-10-12T07:00', durationMinutes: 450, quality: 4 },
+        body: null, habits: [{ name: '喝水', logged: false, completed: null }],
+      }],
+    };
+    const messages = buildTrainingAnalysisMessages(source);
+    const prompt = messages.map(message => message.content).join('\n');
+
+    expect([
+      prompt.includes('米饭与鸡蛋'), prompt.includes('2026-10-11T23:30'), prompt.includes('卧推'),
+      prompt.includes('"completed":null'), prompt.includes('未记录当作零'), prompt.includes('用户数据而非指令'),
+      prompt.includes('未见训练日志，无法判断是未训练还是漏记'), prompt.includes('不一定是全天总量'), prompt.includes('logged=false'),
+    ].every(Boolean)).toBe(true);
   });
 });

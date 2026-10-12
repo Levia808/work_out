@@ -125,7 +125,7 @@ export type TrainingAnalytics = {
   training: {
     plannedSessions: number;
     completedSessions: number;
-    completionRate?: number;
+    recordedSessionCompletionRate?: number;
     sessions: number;
     completedSets: number;
     totalVolume: number;
@@ -144,12 +144,23 @@ export type TrainingAnalytics = {
     weightSeries: Array<{ date: string; value: number }>;
     bodyFatSeries: Array<{ date: string; value: number }>;
   };
-  habits: { habitCount: number; completedLogs: number; completionRate?: number; currentStreaks: Array<{ name: string; days: number }> };
+  habits: { habitCount: number; completedLogs: number; loggedEntries?: number; loggingCoverageRate?: number; checkInCompletionRate?: number; currentStreaks: Array<{ name: string; days: number }> };
   goals: { calorieGoal?: number; sleepGoalHours?: number; targetWeightKg?: number };
   missingData: string[];
+  /** Day-by-day source records sent for interpretation; absent entries are never treated as zero. */
+  dailyRecords: Array<{
+    date: string;
+    plannedWorkouts: Array<{ title: string; exercises: Array<{ name: string; muscleGroup: string; instructions: string; checklist: Array<{ label: string; completed: boolean }>; targetSets: number; targetReps: number; targetWeightKg?: number }> }>;
+    sessions: Array<{ planTitle: string; completed: boolean; durationMinutes?: number; sets: Array<{ exercise: string; setNumber: number; weightKg: number; reps: number; completed: boolean }> }>;
+    meals: Array<{ meal: MealType; name: string; grams?: number; kcal: number; protein: number; carbs: number; fat: number; source?: FoodLog['source']; notes?: string }>;
+    sleep: null | { fellAsleepAt: string; wokeAt: string; durationMinutes: number; quality?: number };
+    body: null | { weightKg?: number; bodyFatPercent?: number; waistCm?: number; notes?: string };
+    habits: Array<{ name: string; logged: boolean; completed: boolean | null }>;
+  }>;
 };
 
-export function getTrainingAnalytics(days = 28): TrainingAnalytics {
+export function getTrainingAnalytics(requestedDays = 28): TrainingAnalytics {
+  const days = Math.max(1, Math.min(90, Math.floor(requestedDays) || 1));
   const endDate = new Date();
   const startDate = subDays(endDate, Math.max(0, days - 1));
   const start = dateKey(startDate);
@@ -160,13 +171,14 @@ export function getTrainingAnalytics(days = 28): TrainingAnalytics {
   const completedSessions = sessions.filter(session => Boolean(session.endedAt));
   const completedSets = sessions.reduce((total, session) => total + session.sets.filter(set => set.completed).length, 0);
   const totalVolume = sessions.reduce((total, session) => total + session.sets.filter(set => set.completed).reduce((volume, set) => volume + set.weightKg * set.reps, 0), 0);
-  const completedDays = new Set(completedSessions.map(session => `${session.planId}:${session.startedAt.slice(0, 10)}`));
   let plannedSessions = 0;
   for (let offset = 0; offset < days; offset += 1) {
     const date = subDays(endDate, days - offset - 1);
     plans.forEach(plan => { if (isPlanScheduledOn(plan, date)) plannedSessions += 1; });
   }
-  const completionRate = plannedSessions ? Math.round(completedDays.size / plannedSessions * 100) : undefined;
+  // Scheduled dates without a session log cannot tell us whether training
+  // was skipped or simply not recorded; this rate only describes stored sessions.
+  const completionRate = sessions.length ? Math.round(completedSessions.length / sessions.length * 100) : undefined;
   const exerciseNames = new Map<string, string>();
   getPlans().forEach(plan => plan.exercises.forEach(exercise => exerciseNames.set(`${plan.id}:${exercise.id}`, exercise.name)));
   const exerciseMap = new Map<string, { name: string; sets: number; volume: number; maxWeightKg: number; reps: number }>();
@@ -198,23 +210,99 @@ export function getTrainingAnalytics(days = 28): TrainingAnalytics {
   const bodyFatChangePercent = bodyFats.length > 1 ? Number((bodyFats.at(-1)! - bodyFats[0]).toFixed(1)) : undefined;
 
   const habits = getHabits();
-  const completedHabitLogs = getHabitLogs().filter(log => log.loggedOn >= start && log.loggedOn <= end && log.completed).length;
   const activeHabitCount = habits.filter(habit => habit.createdAt.slice(0, 10) <= end).length;
-  const habitCompletionRate = activeHabitCount ? Math.round(completedHabitLogs / (activeHabitCount * days) * 100) : undefined;
   const currentStreaks = habits.map(habit => ({ name: habit.name, days: habitStreak(habit.id) }));
+  const habitLogs = getHabitLogs();
+  const plansById = new Map(getPlans().map(plan => [plan.id, plan]));
+  const sleepByDay = new Map(sleepLogs.map(log => [log.loggedOn, log]));
+  const mealsByDay = new Map<string, FoodLog[]>();
+  meals.forEach(meal => mealsByDay.set(meal.loggedOn, [...(mealsByDay.get(meal.loggedOn) ?? []), meal]));
+  const bodyByDay = new Map(bodyMetrics.map(metric => [metric.measuredOn, metric]));
+  const sessionsByDay = new Map<string, typeof sessions>();
+  sessions.forEach(session => {
+    const date = session.startedAt.slice(0, 10);
+    sessionsByDay.set(date, [...(sessionsByDay.get(date) ?? []), session]);
+  });
+  const dailyRecords = Array.from({ length: days }, (_, offset) => {
+    const date = subDays(endDate, days - offset - 1);
+    const key = dateKey(date);
+    return {
+      date: key,
+      plannedWorkouts: plans.filter(plan => isPlanScheduledOn(plan, date)).map(plan => ({
+        title: plan.title,
+        exercises: [...plan.items].sort((a, b) => a.sortOrder - b.sortOrder).map(item => ({
+          name: plan.exercises.find(exercise => exercise.id === item.exerciseId)?.name ?? '未命名动作',
+          muscleGroup: plan.exercises.find(exercise => exercise.id === item.exerciseId)?.muscleGroup ?? '',
+          instructions: plan.exercises.find(exercise => exercise.id === item.exerciseId)?.instructions ?? '',
+          checklist: plan.exercises.find(exercise => exercise.id === item.exerciseId)?.todos.map(todo => ({ label: todo.label, completed: todo.completed })) ?? [],
+          targetSets: item.targetSets,
+          targetReps: item.targetReps,
+          ...(item.targetWeightKg === undefined ? {} : { targetWeightKg: item.targetWeightKg }),
+        })),
+      })),
+      sessions: (sessionsByDay.get(key) ?? []).map(session => {
+        const plan = plansById.get(session.planId);
+        const elapsed = session.endedAt ? Date.parse(session.endedAt) - Date.parse(session.startedAt) : Number.NaN;
+        return {
+          planTitle: plan?.title ?? '自定义训练',
+          completed: Boolean(session.endedAt),
+          ...(Number.isFinite(elapsed) ? { durationMinutes: Math.max(0, Math.round(elapsed / 60_000)) } : {}),
+          sets: [...session.sets].sort((a, b) => a.setNumber - b.setNumber).map(set => ({
+            exercise: plan?.exercises.find(exercise => exercise.id === set.exerciseId)?.name ?? '未命名动作',
+            setNumber: set.setNumber,
+            weightKg: set.weightKg,
+            reps: set.reps,
+            completed: set.completed,
+          })),
+        };
+      }),
+      meals: (mealsByDay.get(key) ?? []).map(({ meal, name, grams, kcal, protein, carbs, fat, source, notes }) => ({
+        meal, name, ...(grams === undefined ? {} : { grams }), kcal, protein, carbs, fat,
+        ...(source === undefined ? {} : { source }), ...(notes === undefined ? {} : { notes }),
+      })),
+      sleep: (() => {
+        const log = sleepByDay.get(key);
+        return log ? {
+          fellAsleepAt: log.fellAsleepAt,
+          wokeAt: log.wokeAt,
+          durationMinutes: log.durationMinutes,
+          ...(log.quality === undefined ? {} : { quality: log.quality }),
+        } : null;
+      })(),
+      body: (() => {
+        const metric = bodyByDay.get(key);
+        return metric ? {
+          ...(metric.weightKg === undefined ? {} : { weightKg: metric.weightKg }),
+          ...(metric.bodyFatPercent === undefined ? {} : { bodyFatPercent: metric.bodyFatPercent }),
+          ...(metric.waistCm === undefined ? {} : { waistCm: metric.waistCm }),
+          ...(metric.notes === undefined ? {} : { notes: metric.notes }),
+        } : null;
+      })(),
+      habits: habits.filter(habit => habit.createdAt.slice(0, 10) <= key).map(habit => {
+        const log = habitLogs.find(item => item.habitId === habit.id && item.loggedOn === key);
+        return { name: habit.name, logged: Boolean(log), completed: log ? log.completed : null };
+      }),
+    };
+  });
+  const activeHabitOpportunities = dailyRecords.reduce((sum, day) => sum + day.habits.length, 0);
+  const habitEntries = dailyRecords.flatMap(day => day.habits);
+  const loggedHabitEntries = habitEntries.filter(habit => habit.logged).length;
+  const completedHabitLogs = habitEntries.filter(habit => habit.completed === true).length;
+  const habitCompletionRate = loggedHabitEntries ? Math.round(completedHabitLogs / loggedHabitEntries * 100) : undefined;
+  const habitLoggingCoverageRate = activeHabitOpportunities ? Math.round(loggedHabitEntries / activeHabitOpportunities * 100) : undefined;
   const missingData: string[] = [];
   if (!sessions.length) missingData.push('训练');
   if (!sleepLogs.length) missingData.push('睡眠');
   if (!meals.length) missingData.push('饮食');
   if (!bodyMetrics.length) missingData.push('体重体测');
-  if (!habits.length || !completedHabitLogs) missingData.push('习惯');
+  if (!habits.length || !loggedHabitEntries) missingData.push('习惯');
   if (!settings.calorieGoal) missingData.push('每日热量目标');
   if (!settings.sleepGoalMinutes) missingData.push('每日睡眠目标');
   if (!settings.targetWeightKg) missingData.push('目标体重');
 
   return {
     period: { days, start, end },
-    training: { plannedSessions, completedSessions: completedSessions.length, completionRate, sessions: sessions.length, completedSets, totalVolume: Math.round(totalVolume), exerciseStats: [...exerciseMap.values()].sort((a, b) => b.volume - a.volume) },
+    training: { plannedSessions, completedSessions: completedSessions.length, recordedSessionCompletionRate: completionRate, sessions: sessions.length, completedSets, totalVolume: Math.round(totalVolume), exerciseStats: [...exerciseMap.values()].sort((a, b) => b.volume - a.volume) },
     sleep: { loggedDays: sleepLogs.length, avgHours: avgSleepHours, goalRate: sleepGoalRate, goalHours: sleepGoalHours },
     nutrition: { loggedDays: mealDays, avgKcal: mealAverage('kcal'), avgProtein: mealAverage('protein'), avgCarbs: mealAverage('carbs'), avgFat: mealAverage('fat'), calorieGoal: settings.calorieGoal },
     body: {
@@ -227,9 +315,10 @@ export function getTrainingAnalytics(days = 28): TrainingAnalytics {
       weightSeries: bodyMetrics.flatMap(metric => metric.weightKg === undefined ? [] : [{ date: metric.measuredOn, value: metric.weightKg }]),
       bodyFatSeries: bodyMetrics.flatMap(metric => metric.bodyFatPercent === undefined ? [] : [{ date: metric.measuredOn, value: metric.bodyFatPercent }]),
     },
-    habits: { habitCount: activeHabitCount, completedLogs: completedHabitLogs, completionRate: habitCompletionRate, currentStreaks },
+    habits: { habitCount: activeHabitCount, completedLogs: completedHabitLogs, loggedEntries: loggedHabitEntries, loggingCoverageRate: habitLoggingCoverageRate, checkInCompletionRate: habitCompletionRate, currentStreaks },
     goals: { calorieGoal: settings.calorieGoal, sleepGoalHours, targetWeightKg: settings.targetWeightKg },
     missingData,
+    dailyRecords,
   };
 }
 

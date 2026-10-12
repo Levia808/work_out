@@ -18,6 +18,11 @@ import { NutritionPage } from '../pages/NutritionPage';
 import { SleepPage } from '../pages/SleepPage';
 import { BodyPage } from '../pages/BodyPage';
 import { HabitsPage } from '../pages/HabitsPage';
+import { AiPromptTestPage } from '../pages/AiPromptTestPage';
+
+const statsElement = import.meta.env.DEV && new URLSearchParams(window.location.search).get('ai-test') === '1'
+  ? <AiPromptTestPage />
+  : <StatsPage />;
 
 export const router = createBrowserRouter([
   { path: '/install', element: <InstallPage /> },
@@ -29,7 +34,7 @@ export const router = createBrowserRouter([
     { path: 'workouts/:planId/exercises/:exerciseId', element: <WorkoutExercisePage /> },
     { path: 'workouts/:planId/session', element: <WorkoutSessionPage /> },
     { path: 'records', element: <RecordsPage /> },
-    { path: 'stats', element: <StatsPage /> },
+    { path: 'stats', element: statsElement },
     { path: 'stats/report/:jobId', element: <StatsReportPage /> },
     { path: 'stats/history', element: <StatsHistoryPage /> },
     { path: 'settings', element: <SettingsPage /> },
