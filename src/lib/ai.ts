@@ -668,6 +668,13 @@ export function auditTrainingAnalysisNarrative(report: TrainingAnalysis): string
   return [...warnings];
 }
 
+/** Keep known unsafe claims out of both generated reports and saved history. */
+export function assertTrainingAnalysisNarrativeSafe(report: TrainingAnalysis): void {
+  if (auditTrainingAnalysisNarrative(report).length) {
+    throw new Error('AI 分析未通过数据边界校验，报告未保存。请重试。');
+  }
+}
+
 export function buildTrainingAnalysisMessages(data: TrainingAnalytics): Array<{ role: 'system' | 'user'; content: string }> {
   const system = `你是 FitTrack 的训练记录分析助手。输入包含所选区间的汇总指标、用户目标及逐日原始记录，可能涵盖训练计划/实际训练组、逐餐食物与营养素、睡眠、体测和习惯打卡。逐日记录是唯一的事实来源，汇总只用于交叉核对；任何矛盾以逐日记录为准。
 
@@ -699,6 +706,7 @@ export async function analyzeTraining(provider: AiProvider, apiKey: string, data
   const text = await callProvider(provider, apiKey, buildTrainingAnalysisMessages(data), 0.1);
   const result = bindTrainingAnalysisToSourceData(parseAiJson<unknown>(text), data);
   if (!result.compact.summary || !result.compact.dataNote) throw new Error('AI 返回的分析 JSON 不完整，请重试。');
+  assertTrainingAnalysisNarrativeSafe(result);
   return result;
 }
 

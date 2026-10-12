@@ -1,4 +1,4 @@
-import { auditTrainingAnalysisNarrative, bindTrainingAnalysisToSourceData, extractAiText, getAnalysisProvider, normalizeTrainingAnalysis } from './ai';
+import { assertTrainingAnalysisNarrativeSafe, auditTrainingAnalysisNarrative, bindTrainingAnalysisToSourceData, extractAiText, getAnalysisProvider, normalizeTrainingAnalysis } from './ai';
 import type { TrainingAnalytics } from './localData';
 
 describe('AI provider selection', () => {
@@ -184,6 +184,13 @@ describe('AI narrative quality audit', () => {
       detailed: {},
     });
     expect(auditTrainingAnalysisNarrative(report).includes('建议提及当前不支持的休息标记功能')).toBe(true);
+    let rejected = false;
+    try {
+      assertTrainingAnalysisNarrativeSafe(report);
+    } catch {
+      rejected = true;
+    }
+    expect(rejected).toBe(true);
   });
 });
 
