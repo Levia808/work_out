@@ -43,6 +43,8 @@ globalThis.describe('FitTrack calculations', () => {
     globalThis.expect(result.androidRegionFatEstimatePercent).toBe(41.9);
     globalThis.expect(result.methodKey).toBe('peng-2026-chinese-women');
     globalThis.expect(result.methodNote?.includes('不是个人误差区间')).toBe(true);
+    globalThis.expect(result.methodNote?.includes('云南省 630 名')).toBe(true);
+    globalThis.expect(result.methodNote?.includes('尚无独立外部验证')).toBe(true);
     const withoutAge = estimateBodyComposition({ bodyFormulaSex: 'female', heightCm: 170, weightKg: 70, waistCm: 80, waistMeasurementSite: 'narrowest' });
     globalThis.expect(withoutAge.bodyFatEstimatePercent).toBe(36.3);
     globalThis.expect(withoutAge.methodNote?.includes('无法判断')).toBe(true);

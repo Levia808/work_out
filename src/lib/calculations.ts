@@ -88,7 +88,7 @@ export function estimateBodyComposition(input: BodyCompositionInputs): BodyCompo
       androidRegionFatEstimatePercent = -13.3 + 0.711 * bmiRaw + 0.475 * waist;
       method = 'Peng 等（2026）中国女性围度方程';
       methodKey = 'peng-2026-chinese-women';
-      methodNote = `该研究样本为中国女性（20–79 岁），采用重复交叉验证，尚不能视作独立外部验证；总体体脂率交叉验证 RMSE 约 3.47 个百分点，Android 区域体脂率约 5.81 个百分点。群体误差不是个人误差区间。${input.ageYears === undefined ? ' 未记录年龄，无法判断是否处于研究样本年龄范围。' : input.ageYears < 20 || input.ageYears > 79 ? ' 当前年龄超出研究样本范围，属于外推。' : ''}Android 区域脂肪不等同于内脏脂肪。`;
+      methodNote = `该方程来自云南省 630 名中国成年女性（20–79 岁）样本，采用重复交叉验证，尚无独立外部验证；总体体脂率交叉验证 RMSE 为 3.47±0.36 个百分点，Android 区域体脂率为 5.81±0.64 个百分点。研究群体误差不是个人误差区间，不能保证适用于其他人群。${input.ageYears === undefined ? ' 未记录年龄，无法判断是否处于研究样本年龄范围。' : input.ageYears < 20 || input.ageYears > 79 ? ' 当前年龄超出研究样本范围，属于外推。' : ''}Android 区域脂肪不等同于内脏脂肪。`;
     } else {
       // Liu et al. 2015 Chinese-adult equations. Waist protocol is the
       // midpoint between the lower rib and iliac crest.
